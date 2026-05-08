@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Vlaams Studio
 
-## Getting Started
+Local web app for practicing Flemish with GPT Realtime 2, CEFR levels, roleplay scenarios, and uploaded lesson material context.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Add your OpenAI API key to `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Use `OPENAI_BASE_URL=https://eu.api.openai.com/v1` only if your OpenAI account is configured for the EU endpoint.
 
-## Learn More
+## Run
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Verification
 
-## Deploy on Vercel
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Local Data
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Uploaded `.txt`, `.md`, and `.pdf` lesson material is parsed and stored under `.local/materials`.
+- `.local/` is ignored by git.
+- Level selection and progress are stored in browser `localStorage`.
+- Live voice sessions are unavailable until `OPENAI_API_KEY` is present.
+
+## Realtime Flow
+
+- The browser never receives the standard OpenAI API key.
+- `POST /api/realtime/session` creates a short-lived Realtime client secret.
+- The browser uses that ephemeral secret to connect to `/v1/realtime/calls` over WebRTC.
+- The Realtime model can call `search_lesson_materials` to pull chunks from uploaded course material.
