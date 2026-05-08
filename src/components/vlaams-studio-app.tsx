@@ -304,7 +304,7 @@ export function VlaamsStudioApp() {
 
   return (
     <main className="min-h-[100dvh] bg-[#f7f7f5] text-[#1f2420]">
-      <div className="grid min-h-[100dvh] grid-cols-1 lg:grid-cols-[92px_minmax(0,1fr)_360px]">
+      <div className="mx-auto grid min-h-[100dvh] max-w-[1680px] grid-cols-1 border-x border-[#deded8]/70 lg:grid-cols-[84px_minmax(0,1fr)_320px] 2xl:grid-cols-[88px_minmax(0,1fr)_344px]">
         <aside className="border-b border-[#deded8] bg-[#f1f1ee] px-4 py-4 lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between gap-4 lg:min-h-[calc(100dvh-2rem)] lg:flex-col">
             <div className="flex items-center gap-3 lg:flex-col">
@@ -326,7 +326,7 @@ export function VlaamsStudioApp() {
                     type="button"
                     onClick={() => selectLevel(level.id)}
                     className={cn(
-                      "group grid min-w-18 gap-1 rounded-lg border px-3 py-2 text-left transition lg:w-full lg:min-w-0",
+                      "group grid min-w-18 gap-1 rounded-lg border px-3 py-2 text-left transition active:scale-[0.98] lg:w-full lg:min-w-0 lg:px-2.5",
                       isSelected
                         ? "border-[#2f6f57] bg-white text-[#1f2420] shadow-[0_8px_24px_rgba(31,36,32,0.08)]"
                         : "border-transparent text-[#68706a] hover:border-[#deded8] hover:bg-white/70",
@@ -356,13 +356,16 @@ export function VlaamsStudioApp() {
           </div>
         </aside>
 
-        <section className="min-w-0 px-4 py-5 sm:px-6 lg:px-8">
-          <header className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-            <div>
-              <p className="text-sm font-semibold text-[#2f6f57]">Vlaams Studio</p>
-              <h1 className="mt-2 max-w-2xl text-3xl font-semibold leading-tight sm:text-4xl">
-                Practice Flemish against real lesson context.
+        <section className="min-w-0 px-4 py-4 sm:px-5 xl:px-6">
+          <header className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#2f6f57]">Vlaams Studio</p>
+              <h1 className="mt-1 text-2xl font-semibold leading-tight tracking-tight sm:text-[28px]">
+                Live practice room
               </h1>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-[#68706a]">
+                Flemish roleplay, lesson materials, corrections, and progress in one workspace.
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={realtime.status === "live" ? "success-light" : "default"} className="rounded-md">
@@ -376,18 +379,18 @@ export function VlaamsStudioApp() {
           </header>
 
           <Card className="overflow-hidden border-[#deded8] bg-white shadow-[0_18px_60px_rgba(31,36,32,0.08)]">
-            <CardHeader className="grid gap-5 border-b border-[#ededdf] p-5 lg:grid-cols-[1fr_auto]">
+            <CardHeader className="grid gap-4 border-b border-[#ededdf] p-4 lg:grid-cols-[1fr_auto]">
               <div>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary" className="rounded-md">
                     {selectedScenario.level}
                   </Badge>
                   <span className="text-sm text-[#68706a]">{selectedScenario.location}</span>
                 </div>
-                <CardTitle className="text-2xl font-semibold leading-tight tracking-normal">
+                <CardTitle className="text-xl font-semibold leading-tight tracking-tight">
                   {selectedScenario.title}
                 </CardTitle>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-[#68706a]">{selectedScenario.objective}</p>
+                <p className="mt-1 max-w-xl text-sm leading-5 text-[#68706a]">{selectedScenario.objective}</p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -402,7 +405,7 @@ export function VlaamsStudioApp() {
                 </Button>
                 <Button
                   onClick={handlePracticeToggle}
-                  className="min-w-32 bg-[#2f6f57] hover:bg-[#285f4b]"
+                  className="min-w-[7.5rem] bg-[#2f6f57] shadow-[0_8px_20px_rgba(47,111,87,0.18)] transition active:scale-[0.98] hover:bg-[#285f4b]"
                   disabled={realtime.status === "connecting"}
                 >
                   {realtime.status === "live" ? (
@@ -420,9 +423,9 @@ export function VlaamsStudioApp() {
               </div>
             </CardHeader>
 
-            <CardContent className="grid gap-6 p-5 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="space-y-5">
-                <div className="rounded-lg border border-[#deded8] bg-[#f8f8f4] p-4">
+            <CardContent className="grid gap-4 p-4 xl:grid-cols-[1.08fr_0.92fr]">
+              <div className="space-y-3">
+                <div className="rounded-lg border border-[#deded8] bg-[#f8f8f4] p-3.5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium">Listening arena</p>
@@ -430,7 +433,7 @@ export function VlaamsStudioApp() {
                     </div>
                     <Volume2 className="size-5 text-[#2f6f57]" aria-hidden="true" />
                   </div>
-                  <div className="mt-6 flex h-24 items-end justify-between gap-1" aria-hidden="true">
+                  <div className="mt-5 flex h-20 items-end justify-between gap-1" aria-hidden="true">
                     {Array.from({ length: 36 }).map((_, index) => (
                       <span
                         key={index}
@@ -462,27 +465,27 @@ export function VlaamsStudioApp() {
                   )}
                 </div>
 
-                <div className="grid gap-3">
+                <div className="grid gap-2.5">
                   {visibleTranscript.map((item) => (
                     <div
                       key={`${item.speaker}-${item.text}`}
                       className={cn(
-                        "rounded-lg border p-3",
+                        "rounded-lg border p-2.5",
                         item.speaker === "Correction"
                           ? "border-[#b8d6c8] bg-[#edf7f1]"
                           : "border-[#deded8] bg-white",
                       )}
                     >
                       <p className="text-xs font-medium text-[#68706a]">{item.speaker}</p>
-                      <p className="mt-1 text-sm leading-6">{item.text}</p>
+                      <p className="mt-1 text-sm leading-5">{item.text}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <p className="mb-3 text-sm font-medium">Session targets</p>
+                  <p className="mb-2 text-sm font-medium">Session targets</p>
                   <div className="flex flex-wrap gap-2">
                     {selectedScenario.vocabulary.map((word) => (
                       <Badge key={word} variant="outline" className="rounded-md">
@@ -496,12 +499,12 @@ export function VlaamsStudioApp() {
 
                 <div>
                   <p className="text-sm font-medium">Grammar focus</p>
-                  <p className="mt-2 text-sm leading-6 text-[#68706a]">{selectedScenario.grammarFocus}</p>
+                  <p className="mt-1 text-sm leading-5 text-[#68706a]">{selectedScenario.grammarFocus}</p>
                 </div>
 
-                <div className="grid gap-3">
+                <div className="grid gap-2.5">
                   {feedback.map((item) => (
-                    <div key={item.label} className="rounded-lg border border-[#deded8] bg-[#fbfbf8] p-3">
+                    <div key={item.label} className="rounded-lg border border-[#deded8] bg-[#fbfbf8] p-2.5">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-medium">{item.label}</p>
                         <span className="font-mono text-xs text-[#68706a]">{item.score}%</span>
@@ -515,7 +518,7 @@ export function VlaamsStudioApp() {
             </CardContent>
           </Card>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.15fr_0.85fr_1fr_0.9fr]">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1.15fr_0.85fr_1fr_0.9fr]">
             {scenarios.map((scenario) => {
               const Icon = scenarioIcons[scenario.id] ?? BookOpen
               const isSelected = selectedScenario.id === scenario.id
@@ -531,13 +534,13 @@ export function VlaamsStudioApp() {
                     }))
                   }}
                   className={cn(
-                    "min-h-32 rounded-lg border bg-white p-4 text-left transition",
+                    "min-h-24 rounded-lg border bg-white p-3 text-left transition active:scale-[0.99]",
                     isSelected
                       ? "border-[#2f6f57] shadow-[0_12px_36px_rgba(47,111,87,0.14)]"
                       : "border-[#deded8] hover:border-[#2f6f57]/50",
                   )}
                 >
-                  <div className="mb-5 flex items-center justify-between gap-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
                     <Icon className="size-5 text-[#2f6f57]" aria-hidden="true" />
                     <span className="text-xs font-medium text-[#68706a]">{scenario.level}</span>
                   </div>
@@ -549,8 +552,8 @@ export function VlaamsStudioApp() {
           </div>
         </section>
 
-        <aside className="border-t border-[#deded8] bg-[#fbfbf8] px-4 py-5 sm:px-6 lg:border-l lg:border-t-0">
-          <div className="sticky top-5 space-y-5">
+        <aside className="border-t border-[#deded8] bg-[#fbfbf8] px-4 py-4 lg:border-l lg:border-t-0">
+          <div className="sticky top-4 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold">Lesson material</p>
@@ -568,15 +571,15 @@ export function VlaamsStudioApp() {
               />
             </div>
 
-            <div className="rounded-lg border border-dashed border-[#cfcfca] bg-white p-4">
+            <div className="rounded-lg border border-dashed border-[#cfcfca] bg-white p-3.5">
               <FileText className="size-5 text-[#2f6f57]" aria-hidden="true" />
-              <p className="mt-3 text-sm font-medium">Text and PDF uploads</p>
-              <p className="mt-2 text-sm leading-6 text-[#68706a]">
+              <p className="mt-2 text-sm font-medium">Text and PDF uploads</p>
+              <p className="mt-1.5 text-sm leading-5 text-[#68706a]">
                 Lesson chunks become searchable context during a live roleplay.
               </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {materials.map((material) => {
                 const checked = activeMaterialIds.includes(material.id)
                 return (
@@ -597,12 +600,12 @@ export function VlaamsStudioApp() {
 
             <Separator />
 
-            <div className="rounded-lg border border-[#deded8] bg-white p-4">
-              <div className="mb-3 flex items-center gap-2">
+            <div className="rounded-lg border border-[#deded8] bg-white p-3.5">
+              <div className="mb-2 flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-[#2f6f57]" aria-hidden="true" />
                 <p className="text-sm font-medium">Active topic</p>
               </div>
-              <p className="text-sm leading-6 text-[#68706a]">
+              <p className="text-sm leading-5 text-[#68706a]">
                 {selectedScenario.objective} Focus on {selectedScenario.grammarFocus.toLowerCase()}
               </p>
             </div>
