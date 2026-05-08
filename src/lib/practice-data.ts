@@ -33,7 +33,7 @@ export const levels: Array<{
 }> = [
   { id: "A1", label: "Starter", detail: "survival phrases", progress: 38 },
   { id: "A2", label: "Daily flow", detail: "routine topics", progress: 54 },
-  { id: "B1", label: "Independent", detail: "opinions and plans", progress: 29 },
+  { id: "B1", label: "Indep.", detail: "opinions and plans", progress: 29 },
   { id: "B2", label: "Sharp", detail: "nuance and pace", progress: 12 },
 ]
 

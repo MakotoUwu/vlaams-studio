@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
   Activity,
   AlertCircle,
@@ -17,6 +17,7 @@ import {
   Stethoscope,
   TrainFront,
   Upload,
+  UserRound,
   Volume2,
 } from "lucide-react"
 
@@ -39,10 +40,24 @@ import { cn } from "@/lib/utils"
 import { useRealtimeSession } from "@/hooks/use-realtime-session"
 
 type PracticeProgress = Record<PracticeLevel, number>
+type PracticePreferences = {
+  selectedLevel: PracticeLevel
+  selectedScenarioId: string
+  progress: PracticeProgress
+}
 
 const progressStorageKey = "vlaams-studio-progress"
 const levelStorageKey = "vlaams-studio-level"
 const scenarioStorageKey = "vlaams-studio-scenario"
+const preferenceChangeEvent = "vlaams-studio-preferences-change"
+const defaultProgress: PracticeProgress = { A1: 38, A2: 54, B1: 29, B2: 12 }
+const defaultLevel: PracticeLevel = "A1"
+const defaultScenarioId = "bakery-antwerp"
+const defaultPreferences: PracticePreferences = {
+  selectedLevel: defaultLevel,
+  selectedScenarioId: defaultScenarioId,
+  progress: defaultProgress,
+}
 
 const transcriptSeed = [
   {
@@ -67,43 +82,105 @@ const scenarioIcons: Record<string, typeof ShoppingBag> = {
 }
 
 function loadStoredProgress(): PracticeProgress {
-  if (typeof window === "undefined") {
-    return { A1: 38, A2: 54, B1: 29, B2: 12 }
-  }
-
   try {
     const raw = window.localStorage.getItem(progressStorageKey)
-    if (!raw) return { A1: 38, A2: 54, B1: 29, B2: 12 }
-    return { A1: 38, A2: 54, B1: 29, B2: 12, ...JSON.parse(raw) }
+    if (!raw) return defaultProgress
+    return { ...defaultProgress, ...JSON.parse(raw) }
   } catch {
-    return { A1: 38, A2: 54, B1: 29, B2: 12 }
+    return defaultProgress
   }
 }
 
 function loadStoredLevel(): PracticeLevel {
-  if (typeof window === "undefined") return "A1"
-
   const storedLevel = window.localStorage.getItem(levelStorageKey) as PracticeLevel | null
-  return storedLevel && levels.some((level) => level.id === storedLevel) ? storedLevel : "A1"
+  return storedLevel && levels.some((level) => level.id === storedLevel) ? storedLevel : defaultLevel
 }
 
 function loadStoredScenario(): string {
-  if (typeof window === "undefined") return "bakery-antwerp"
-
   const storedScenario = window.localStorage.getItem(scenarioStorageKey)
   return storedScenario && scenarios.some((scenario) => scenario.id === storedScenario)
     ? storedScenario
-    : "bakery-antwerp"
+    : defaultScenarioId
+}
+
+function readStoredPreferences(): PracticePreferences {
+  const selectedScenarioId = loadStoredScenario()
+  const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId)
+
+  return {
+    selectedLevel: selectedScenario?.level ?? loadStoredLevel(),
+    selectedScenarioId,
+    progress: loadStoredProgress(),
+  }
+}
+
+function serializePreferences(preferences: PracticePreferences) {
+  return JSON.stringify(preferences)
+}
+
+function getServerPreferencesSnapshot() {
+  return serializePreferences(defaultPreferences)
+}
+
+function getStoredPreferencesSnapshot() {
+  if (typeof window === "undefined") return getServerPreferencesSnapshot()
+  return serializePreferences(readStoredPreferences())
+}
+
+function parsePreferencesSnapshot(snapshot: string): PracticePreferences {
+  try {
+    const parsed = JSON.parse(snapshot) as Partial<PracticePreferences>
+    const selectedScenarioId =
+      parsed.selectedScenarioId && scenarios.some((scenario) => scenario.id === parsed.selectedScenarioId)
+        ? parsed.selectedScenarioId
+        : defaultScenarioId
+    const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId)
+
+    return {
+      selectedLevel: selectedScenario?.level ?? defaultLevel,
+      selectedScenarioId,
+      progress: { ...defaultProgress, ...parsed.progress },
+    }
+  } catch {
+    return defaultPreferences
+  }
+}
+
+function subscribeToPreferences(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => undefined
+
+  window.addEventListener("storage", onStoreChange)
+  window.addEventListener(preferenceChangeEvent, onStoreChange)
+
+  return () => {
+    window.removeEventListener("storage", onStoreChange)
+    window.removeEventListener(preferenceChangeEvent, onStoreChange)
+  }
+}
+
+function savePreferences(preferences: PracticePreferences) {
+  window.localStorage.setItem(levelStorageKey, preferences.selectedLevel)
+  window.localStorage.setItem(scenarioStorageKey, preferences.selectedScenarioId)
+  window.localStorage.setItem(progressStorageKey, JSON.stringify(preferences.progress))
+  window.dispatchEvent(new Event(preferenceChangeEvent))
+}
+
+function updatePreferences(updater: (preferences: PracticePreferences) => PracticePreferences) {
+  savePreferences(updater(readStoredPreferences()))
 }
 
 export function VlaamsStudioApp() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [selectedLevel, setSelectedLevel] = useState<PracticeLevel>(() => loadStoredLevel())
-  const [selectedScenarioId, setSelectedScenarioId] = useState(() => loadStoredScenario())
+  const preferenceSnapshot = useSyncExternalStore(
+    subscribeToPreferences,
+    getStoredPreferencesSnapshot,
+    getServerPreferencesSnapshot,
+  )
+  const preferences = useMemo(() => parsePreferencesSnapshot(preferenceSnapshot), [preferenceSnapshot])
+  const { progress, selectedLevel, selectedScenarioId } = preferences
   const [materials, setMaterials] = useState<LessonMaterialSummary[]>(seedMaterials)
   const [activeMaterialIds, setActiveMaterialIds] = useState<string[]>(["sample-bakery"])
   const [feedback, setFeedback] = useState<FeedbackItem[]>(seedFeedback)
-  const [progress, setProgress] = useState<PracticeProgress>(() => loadStoredProgress())
   const [uploadMessage, setUploadMessage] = useState("Ready for lesson files")
   const realtime = useRealtimeSession()
 
@@ -116,12 +193,6 @@ export function VlaamsStudioApp() {
     scenarios.find((scenario) => scenario.id === selectedScenarioId) ??
     filteredScenarios[0] ??
     scenarios[0]
-
-  useEffect(() => {
-    window.localStorage.setItem(levelStorageKey, selectedLevel)
-    window.localStorage.setItem(scenarioStorageKey, selectedScenario.id)
-    window.localStorage.setItem(progressStorageKey, JSON.stringify(progress))
-  }, [selectedLevel, selectedScenario.id, progress])
 
   useEffect(() => {
     let isActive = true
@@ -148,9 +219,12 @@ export function VlaamsStudioApp() {
   }, [])
 
   function selectLevel(level: PracticeLevel) {
-    setSelectedLevel(level)
     const nextScenario = scenarios.find((scenario) => scenario.level === level)
-    if (nextScenario) setSelectedScenarioId(nextScenario.id)
+    updatePreferences((current) => ({
+      ...current,
+      selectedLevel: level,
+      selectedScenarioId: nextScenario?.id ?? current.selectedScenarioId,
+    }))
   }
 
   async function handlePracticeToggle() {
@@ -162,9 +236,12 @@ export function VlaamsStudioApp() {
           score: Math.min(96, item.score + (index === 1 ? 4 : 2)),
         })),
       )
-      setProgress((current) => ({
+      updatePreferences((current) => ({
         ...current,
-        [selectedLevel]: Math.min(100, current[selectedLevel] + 3),
+        progress: {
+          ...current.progress,
+          [selectedLevel]: Math.min(100, current.progress[selectedLevel] + 3),
+        },
       }))
       return
     }
@@ -262,12 +339,19 @@ export function VlaamsStudioApp() {
               })}
             </nav>
 
-            <div className="hidden w-full space-y-3 lg:block">
+            <div className="hidden w-full space-y-2 lg:block">
               <Progress value={progress[selectedLevel]} className="h-1.5 bg-[#deded8]" />
-              <div className="rounded-lg border border-[#deded8] bg-white p-2">
+              <div className="rounded-lg border border-[#deded8] bg-white p-2 text-center">
                 <p className="text-[11px] font-medium text-[#68706a]">Streak</p>
-                <p className="text-lg font-semibold">8 days</p>
+                <p className="text-lg font-semibold leading-none">8d</p>
               </div>
+              <button
+                type="button"
+                className="grid w-full place-items-center rounded-lg border border-[#deded8] bg-white py-2 text-[#2f6f57] transition hover:border-[#2f6f57]"
+                aria-label="Profile"
+              >
+                <UserRound className="size-4" aria-hidden="true" />
+              </button>
             </div>
           </div>
         </aside>
@@ -440,8 +524,11 @@ export function VlaamsStudioApp() {
                   key={scenario.id}
                   type="button"
                   onClick={() => {
-                    setSelectedLevel(scenario.level)
-                    setSelectedScenarioId(scenario.id)
+                    updatePreferences((current) => ({
+                      ...current,
+                      selectedLevel: scenario.level,
+                      selectedScenarioId: scenario.id,
+                    }))
                   }}
                   className={cn(
                     "min-h-32 rounded-lg border bg-white p-4 text-left transition",
