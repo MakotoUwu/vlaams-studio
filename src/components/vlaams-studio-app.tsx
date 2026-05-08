@@ -36,8 +36,7 @@ import {
   seedMaterials,
 } from "@/lib/practice-data"
 import { cn } from "@/lib/utils"
-
-type ConnectionState = "idle" | "missing-key" | "connecting" | "live" | "error"
+import { useRealtimeSession } from "@/hooks/use-realtime-session"
 
 type PracticeProgress = Record<PracticeLevel, number>
 
@@ -101,13 +100,12 @@ export function VlaamsStudioApp() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedLevel, setSelectedLevel] = useState<PracticeLevel>(() => loadStoredLevel())
   const [selectedScenarioId, setSelectedScenarioId] = useState(() => loadStoredScenario())
-  const [connectionState, setConnectionState] = useState<ConnectionState>("idle")
-  const [isMuted, setIsMuted] = useState(false)
   const [materials, setMaterials] = useState<LessonMaterialSummary[]>(seedMaterials)
   const [activeMaterialIds, setActiveMaterialIds] = useState<string[]>(["sample-bakery"])
   const [feedback, setFeedback] = useState<FeedbackItem[]>(seedFeedback)
   const [progress, setProgress] = useState<PracticeProgress>(() => loadStoredProgress())
   const [uploadMessage, setUploadMessage] = useState("Ready for lesson files")
+  const realtime = useRealtimeSession()
 
   const filteredScenarios = useMemo(
     () => scenarios.filter((scenario) => scenario.level === selectedLevel),
@@ -156,9 +154,8 @@ export function VlaamsStudioApp() {
   }
 
   async function handlePracticeToggle() {
-    if (connectionState === "live") {
-      setConnectionState("idle")
-      setIsMuted(false)
+    if (realtime.status === "live") {
+      realtime.disconnect()
       setFeedback((items) =>
         items.map((item, index) => ({
           ...item,
@@ -172,33 +169,12 @@ export function VlaamsStudioApp() {
       return
     }
 
-    setConnectionState("connecting")
-    try {
-      const response = await fetch("/api/realtime/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          level: selectedLevel,
-          scenarioId: selectedScenario.id,
-          materialIds: activeMaterialIds,
-          mode: "roleplay",
-        }),
-      })
-
-      if (response.status === 401) {
-        setConnectionState("missing-key")
-        return
-      }
-
-      if (!response.ok) {
-        setConnectionState("error")
-        return
-      }
-
-      setConnectionState("live")
-    } catch {
-      setConnectionState("missing-key")
-    }
+    await realtime.connect({
+      level: selectedLevel,
+      scenarioId: selectedScenario.id,
+      materialIds: activeMaterialIds,
+      mode: "roleplay",
+    })
   }
 
   async function handleUpload(fileList: FileList | null) {
@@ -243,8 +219,11 @@ export function VlaamsStudioApp() {
     "missing-key": "OPENAI_API_KEY missing",
     connecting: "Connecting",
     live: "Live practice",
+    "mic-error": "Microphone blocked",
     error: "Connection failed",
-  }[connectionState]
+  }[realtime.status]
+
+  const visibleTranscript = realtime.transcript.length ? realtime.transcript : transcriptSeed
 
   return (
     <main className="min-h-[100dvh] bg-[#f7f7f5] text-[#1f2420]">
@@ -302,7 +281,7 @@ export function VlaamsStudioApp() {
               </h1>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={connectionState === "live" ? "success-light" : "default"} className="rounded-md">
+              <Badge variant={realtime.status === "live" ? "success-light" : "default"} className="rounded-md">
                 <Activity className="size-3" aria-hidden="true" />
                 {connectionCopy}
               </Badge>
@@ -331,13 +310,18 @@ export function VlaamsStudioApp() {
                 <Button
                   variant="outline"
                   size="icon"
-                  onClick={() => setIsMuted((current) => !current)}
-                  aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
+                  onClick={realtime.toggleMute}
+                  aria-label={realtime.isMuted ? "Unmute microphone" : "Mute microphone"}
+                  disabled={realtime.status !== "live"}
                 >
-                  {isMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                  {realtime.isMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
                 </Button>
-                <Button onClick={handlePracticeToggle} className="min-w-32 bg-[#2f6f57] hover:bg-[#285f4b]">
-                  {connectionState === "live" ? (
+                <Button
+                  onClick={handlePracticeToggle}
+                  className="min-w-32 bg-[#2f6f57] hover:bg-[#285f4b]"
+                  disabled={realtime.status === "connecting"}
+                >
+                  {realtime.status === "live" ? (
                     <>
                       <Pause className="size-4" />
                       End session
@@ -368,22 +352,34 @@ export function VlaamsStudioApp() {
                         key={index}
                         className={cn(
                           "w-full rounded-full bg-[#2f6f57]/25 transition",
-                          connectionState === "live" && "bg-[#2f6f57]",
+                          realtime.status === "live" && "bg-[#2f6f57]",
                         )}
                         style={{ height: `${18 + ((index * 17) % 58)}%` }}
                       />
                     ))}
                   </div>
-                  {connectionState === "missing-key" && (
+                  {realtime.status === "missing-key" && (
                     <div className="mt-4 flex items-start gap-2 rounded-md border border-[#d9b78d] bg-[#fff8ed] p-3 text-sm text-[#765327]">
                       <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                       Add `OPENAI_API_KEY` to `.env.local` to run live Realtime sessions.
                     </div>
                   )}
+                  {realtime.status === "mic-error" && (
+                    <div className="mt-4 flex items-start gap-2 rounded-md border border-[#d9b78d] bg-[#fff8ed] p-3 text-sm text-[#765327]">
+                      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      Microphone permission is required for live voice practice.
+                    </div>
+                  )}
+                  {realtime.lastError && realtime.status === "error" && (
+                    <div className="mt-4 flex items-start gap-2 rounded-md border border-[#d9b78d] bg-[#fff8ed] p-3 text-sm text-[#765327]">
+                      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      {realtime.lastError}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid gap-3">
-                  {transcriptSeed.map((item) => (
+                  {visibleTranscript.map((item) => (
                     <div
                       key={`${item.speaker}-${item.text}`}
                       className={cn(
