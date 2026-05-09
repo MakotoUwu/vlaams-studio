@@ -26,7 +26,7 @@ describe("Realtime session config", () => {
     })
 
     expect(instructions).toContain("CEFR level B1")
-    expect(instructions).toContain("Doctor appointment")
+    expect(instructions).toContain("At the doctor appointment")
     expect(instructions).toContain("lesson-a, lesson-b")
   })
 })
