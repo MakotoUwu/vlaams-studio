@@ -386,8 +386,21 @@ function createSeedConversationTurns(exchange: SeedExchange, showNote: boolean):
     grammarPoint: "Samenstellingen",
     retryPrompt: "Zeg de verbeterde zin nog eens rustig.",
   }
+  const quantityCorrection: CorrectionPayload = {
+    original: "Zijn de pistolets van vandaag, en hoeveel kost twee chocoladekoeken?",
+    corrected: "Zijn de pistolets van vandaag, en hoeveel kosten twee chocoladekoeken?",
+    reason: "Bij twee stuks gebruik je het meervoud: ze kosten.",
+    grammarPoint: "Werkwoord bij meervoud",
+    retryPrompt: "Vraag het nog eens met 'kosten'.",
+  }
 
   return [
+    {
+      id: "seed-tutor-intro",
+      speaker: "Tutor",
+      status: "final",
+      text: "Goeiemorgen! Wat mag het zijn vandaag?",
+    },
     {
       id: "seed-you",
       speaker: "You",
@@ -400,6 +413,31 @@ function createSeedConversationTurns(exchange: SeedExchange, showNote: boolean):
       status: "final",
       text: correctionText,
       correction,
+    },
+    {
+      id: "seed-tutor-followup",
+      speaker: "Tutor",
+      status: "final",
+      text: "Goed. Vraag nu of de pistolets vers zijn en wat twee chocoladekoeken kosten.",
+    },
+    {
+      id: "seed-you-quantity",
+      speaker: "You",
+      status: "final",
+      text: quantityCorrection.original,
+    },
+    {
+      id: "seed-correction-quantity",
+      speaker: "Correction",
+      status: "final",
+      text: quantityCorrection.corrected,
+      correction: quantityCorrection,
+    },
+    {
+      id: "seed-material-used",
+      speaker: "Material",
+      status: "final",
+      text: "Lesmateriaal gebruikt: bakkerij-dialogen.pdf · broodsoorten, prijzen en hoeveelheden.",
     },
   ]
 }
