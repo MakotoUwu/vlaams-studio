@@ -14,6 +14,10 @@ describe("Realtime session config", () => {
     expect(config.model).toBe("gpt-realtime-2")
     expect(config.reasoning.effort).toBe("low")
     expect(config.audio.output.voice).toBe("marin")
+    expect(config.audio.input.transcription).toEqual({
+      model: "gpt-realtime-whisper",
+      language: "nl",
+    })
     expect(config.tools[0]?.name).toBe("search_lesson_materials")
   })
 

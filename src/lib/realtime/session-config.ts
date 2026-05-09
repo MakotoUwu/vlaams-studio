@@ -19,6 +19,10 @@ export type RealtimeSessionConfig = {
   }
   audio: {
     input: {
+      transcription: {
+        model: "gpt-realtime-whisper"
+        language: "nl"
+      }
       turn_detection: {
         type: "semantic_vad"
       }
@@ -102,6 +106,10 @@ export function buildRealtimeSessionConfig(input: RealtimeSessionInput): Realtim
     },
     audio: {
       input: {
+        transcription: {
+          model: "gpt-realtime-whisper",
+          language: "nl",
+        },
         turn_detection: {
           type: "semantic_vad",
         },
