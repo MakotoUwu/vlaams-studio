@@ -14,7 +14,7 @@ Three-column app shell on desktop, full-bleed on the page background. The shell 
 ```
 
 - Left and right rails get a faint vertical divider against the studio column.
-- Max content width ~ 1536 px. Center the shell on wider screens.
+- The shell fills the viewport width so the rails stay attached to the screen edges. The center practice content is capped around 1120 px and centered inside the flexible studio column.
 - Vertical rhythm: 24 px section gap, 16 px tile gap, 12 px chip gap.
 
 ## Color tokens
@@ -88,7 +88,7 @@ Top status row, then the scenario block, then the practice arena, then the score
 
 ### Scenario tiles
 - 4 tiles in a row (auto-fit grid, min 168 px).
-- Each tile: 132 px tall, 16 px radius, hairline border. Top-left small `ACTIEF` pill on the active tile. Centered icon (lucide) + bottom-aligned title (sans 600 15 px) + duration caption (`8–10 min`, 13 px `--ink-muted`).
+- Each tile: 156 px tall, 8 px radius, hairline border. Top-left small `ACTIEF` pill on the active tile. Left-aligned icon (lucide) + bottom-aligned title (sans 600 15 px) + duration caption (`8–10 min`, 13 px `--ink-muted`).
 - Active tile: solid `--green`, white type, `ACTIEF` pill is white-on-green darker.
 - Hover: border → `--green`, slight lift.
 - Icon-only controls expose a short hover/focus tooltip and all buttons use a visible `focus-visible` ring. Labels must describe the implemented action, not a future gesture.
@@ -97,7 +97,7 @@ Top status row, then the scenario block, then the practice arena, then the score
 - Centered `Ik luister...` (15 px `--ink-soft`) above an animated 60-bar waveform in `--green`. Waveform animates only while `status === "live"`.
 - Below: three controls in a row.
   - Left: ghost circular pause button (`II`).
-  - Center: solid `--green` mic button, 88 px diameter, soft green outer halo. Caption `Houd ingedrukt om te praten` 12 px `--ink-muted`.
+  - Center: solid `--green` mic button, 72 px diameter, soft green outer halo. Caption `Klik om te praten` 12 px `--ink-muted`.
   - Right: ghost circular stop button (`■`).
 - Stretch line beneath: two stacked transcript bubbles inside a single rounded card.
   - Row label on the left (`Jij zei`, `Verbeterd`) in 13 px `--ink-muted` (vertical-aligned center).

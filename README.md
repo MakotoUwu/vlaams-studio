@@ -39,7 +39,7 @@ pnpm build
 
 - Uploaded `.txt`, `.md`, and `.pdf` lesson material is parsed and stored under `.local/materials`.
 - `.local/` is ignored by git.
-- Level selection and progress are stored in browser `localStorage`.
+- Level selection, scenario selection, progress, material toggle, streak, session score, and recent feedback are stored in browser `localStorage`.
 - Live voice sessions are unavailable until `OPENAI_API_KEY` is present.
 
 ## Realtime Flow
@@ -48,3 +48,4 @@ pnpm build
 - `POST /api/realtime/session` creates a short-lived Realtime client secret.
 - The browser uses that ephemeral secret to connect to `/v1/realtime/calls` over WebRTC.
 - The Realtime model can call `search_lesson_materials` to pull chunks from uploaded course material.
+- The live transcript handles learner speech, tutor speech, material lookup notices, and Realtime errors as chat turns.

@@ -40,11 +40,17 @@ type PracticePreferences = {
   selectedLevel: PracticeLevel
   selectedScenarioId: string
   progress: PracticeProgress
+  streakDays: number
+  sessionScore: number
+  feedback: FeedbackItem[]
+  useMaterialInSession: boolean
+  activeMaterialIds: string[]
 }
 
 const progressStorageKey = "vlaams-studio-progress-v2"
 const levelStorageKey = "vlaams-studio-level"
 const scenarioStorageKey = "vlaams-studio-scenario"
+const studioStateStorageKey = "vlaams-studio-state-v1"
 const preferenceChangeEvent = "vlaams-studio-preferences-change"
 const defaultProgress: PracticeProgress = { A1: 38, A2: 64, B1: 29, B2: 12 }
 const defaultLevel: PracticeLevel = "A2"
@@ -53,6 +59,16 @@ const defaultPreferences: PracticePreferences = {
   selectedLevel: defaultLevel,
   selectedScenarioId: defaultScenarioId,
   progress: defaultProgress,
+  streakDays: 7,
+  sessionScore: 78,
+  feedback: seedFeedback,
+  useMaterialInSession: true,
+  activeMaterialIds: ["sample-bakery"],
+}
+
+type UploadState = {
+  status: "idle" | "uploading" | "success" | "error"
+  message: string | null
 }
 
 type SeedExchange = {
@@ -110,14 +126,59 @@ function loadStoredScenario(): string {
     : defaultScenarioId
 }
 
+function loadStoredStudioState(): Partial<PracticePreferences> {
+  try {
+    const raw = window.localStorage.getItem(studioStateStorageKey)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Partial<PracticePreferences>
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function sanitizeFeedback(items: unknown): FeedbackItem[] {
+  if (!Array.isArray(items)) return seedFeedback
+
+  const parsed = items.filter((item): item is FeedbackItem => {
+    if (!item || typeof item !== "object") return false
+    const candidate = item as Partial<FeedbackItem>
+    return (
+      typeof candidate.label === "string" &&
+      typeof candidate.score === "number" &&
+      typeof candidate.note === "string"
+    )
+  })
+
+  return parsed.length ? parsed : seedFeedback
+}
+
 function readStoredPreferences(): PracticePreferences {
   const selectedScenarioId = loadStoredScenario()
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId)
+  const storedState = loadStoredStudioState()
+  const storedActiveMaterials = Array.isArray(storedState.activeMaterialIds)
+    ? storedState.activeMaterialIds.filter((id): id is string => typeof id === "string")
+    : defaultPreferences.activeMaterialIds
 
   return {
     selectedLevel: selectedScenario?.level ?? loadStoredLevel(),
     selectedScenarioId,
     progress: loadStoredProgress(),
+    streakDays:
+      typeof storedState.streakDays === "number" && Number.isFinite(storedState.streakDays)
+        ? storedState.streakDays
+        : defaultPreferences.streakDays,
+    sessionScore:
+      typeof storedState.sessionScore === "number" && Number.isFinite(storedState.sessionScore)
+        ? storedState.sessionScore
+        : defaultPreferences.sessionScore,
+    feedback: sanitizeFeedback(storedState.feedback),
+    useMaterialInSession:
+      typeof storedState.useMaterialInSession === "boolean"
+        ? storedState.useMaterialInSession
+        : defaultPreferences.useMaterialInSession,
+    activeMaterialIds: storedActiveMaterials.length ? storedActiveMaterials : defaultPreferences.activeMaterialIds,
   }
 }
 
@@ -147,6 +208,22 @@ function parsePreferencesSnapshot(snapshot: string): PracticePreferences {
       selectedLevel: selectedScenario?.level ?? defaultLevel,
       selectedScenarioId,
       progress: { ...defaultProgress, ...parsed.progress },
+      streakDays:
+        typeof parsed.streakDays === "number" && Number.isFinite(parsed.streakDays)
+          ? parsed.streakDays
+          : defaultPreferences.streakDays,
+      sessionScore:
+        typeof parsed.sessionScore === "number" && Number.isFinite(parsed.sessionScore)
+          ? parsed.sessionScore
+          : defaultPreferences.sessionScore,
+      feedback: sanitizeFeedback(parsed.feedback),
+      useMaterialInSession:
+        typeof parsed.useMaterialInSession === "boolean"
+          ? parsed.useMaterialInSession
+          : defaultPreferences.useMaterialInSession,
+      activeMaterialIds: Array.isArray(parsed.activeMaterialIds)
+        ? parsed.activeMaterialIds.filter((id): id is string => typeof id === "string")
+        : defaultPreferences.activeMaterialIds,
     }
   } catch {
     return defaultPreferences
@@ -169,6 +246,7 @@ function savePreferences(preferences: PracticePreferences) {
   window.localStorage.setItem(levelStorageKey, preferences.selectedLevel)
   window.localStorage.setItem(scenarioStorageKey, preferences.selectedScenarioId)
   window.localStorage.setItem(progressStorageKey, JSON.stringify(preferences.progress))
+  window.localStorage.setItem(studioStateStorageKey, JSON.stringify(preferences))
   window.dispatchEvent(new Event(preferenceChangeEvent))
 }
 
@@ -227,13 +305,18 @@ export function VlaamsStudioApp() {
     getServerPreferencesSnapshot,
   )
   const preferences = useMemo(() => parsePreferencesSnapshot(preferenceSnapshot), [preferenceSnapshot])
-  const { progress, selectedLevel, selectedScenarioId } = preferences
+  const {
+    activeMaterialIds,
+    feedback,
+    progress,
+    selectedLevel,
+    selectedScenarioId,
+    sessionScore,
+    streakDays,
+    useMaterialInSession,
+  } = preferences
   const [materials, setMaterials] = useState<LessonMaterialSummary[]>(seedMaterials)
-  const [activeMaterialIds, setActiveMaterialIds] = useState<string[]>(["sample-bakery"])
-  const [feedback, setFeedback] = useState<FeedbackItem[]>(seedFeedback)
-  const [sessionScore, setSessionScore] = useState(78)
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null)
-  const [useMaterialInSession, setUseMaterialInSession] = useState(true)
+  const [uploadState, setUploadState] = useState<UploadState>({ status: "idle", message: null })
   const [showCorrectionNote, setShowCorrectionNote] = useState(true)
   const realtime = useRealtimeSession()
 
@@ -244,6 +327,15 @@ export function VlaamsStudioApp() {
   const waveformHeights = useWaveform(isLive)
 
   const activeMaterial = materials.find((material) => activeMaterialIds.includes(material.id)) ?? materials[0]
+  const hasUploadedMaterial = Boolean(activeMaterial && activeMaterial.id !== "sample-bakery")
+  const materialTitle = hasUploadedMaterial
+    ? activeMaterial?.title
+    : selectedScenario.defaultMaterial.name
+  const materialMeta = hasUploadedMaterial
+    ? activeMaterial?.kind === "pdf"
+      ? `PDF · ${activeMaterial.chunkCount} fragmenten`
+      : `Tekst · ${activeMaterial?.chunkCount ?? 0} fragmenten`
+    : selectedScenario.defaultMaterial.size
   const visibleTranscript = realtime.transcript.length ? realtime.transcript : null
 
   useEffect(() => {
@@ -257,12 +349,21 @@ export function VlaamsStudioApp() {
       .then((data) => {
         if (!isActive || !data?.materials?.length) return
         setMaterials(data.materials)
-        setActiveMaterialIds((current) =>
-          current.filter((id) => data.materials.some((material) => material.id === id)),
-        )
+        updatePreferences((current) => {
+          const nextMaterialIds = current.activeMaterialIds.filter((id) =>
+            data.materials.some((material) => material.id === id),
+          )
+
+          return {
+            ...current,
+            activeMaterialIds: nextMaterialIds.length ? nextMaterialIds : [data.materials[0].id],
+          }
+        })
       })
       .catch(() => {
-        if (isActive) setUploadMessage("Lokaal lesmateriaal niet beschikbaar")
+        if (isActive) {
+          setUploadState({ status: "error", message: "Lokaal lesmateriaal niet beschikbaar" })
+        }
       })
 
     return () => {
@@ -290,15 +391,13 @@ export function VlaamsStudioApp() {
   async function handlePracticeToggle() {
     if (isLive) {
       realtime.disconnect()
-      setFeedback((items) =>
-        items.map((item, index) => ({
+      updatePreferences((current) => ({
+        ...current,
+        feedback: current.feedback.map((item, index) => ({
           ...item,
           score: Math.min(96, item.score + (index === 1 ? 4 : 2)),
         })),
-      )
-      setSessionScore((value) => Math.min(98, value + 3))
-      updatePreferences((current) => ({
-        ...current,
+        sessionScore: Math.min(98, current.sessionScore + 3),
         progress: {
           ...current.progress,
           [selectedLevel]: Math.min(100, current.progress[selectedLevel] + 3),
@@ -319,7 +418,13 @@ export function VlaamsStudioApp() {
     const file = fileList?.[0]
     if (!file) return
 
-    setUploadMessage("Lesmateriaal uploaden")
+    if (!/\.(txt|md|pdf)$/i.test(file.name)) {
+      setUploadState({ status: "error", message: "Gebruik een .txt, .md of .pdf bestand" })
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
+    setUploadState({ status: "uploading", message: "Lesmateriaal uploaden" })
     const formData = new FormData()
     formData.append("file", file)
 
@@ -331,16 +436,16 @@ export function VlaamsStudioApp() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null
-        setUploadMessage(payload?.error ?? "Upload mislukt")
+        setUploadState({ status: "error", message: payload?.error ?? "Upload mislukt" })
         return
       }
 
       const payload = (await response.json()) as { material: LessonMaterialSummary }
       setMaterials((current) => [payload.material, ...current])
-      setActiveMaterialIds([payload.material.id])
-      setUploadMessage("Lesmateriaal klaar")
+      updatePreferences((current) => ({ ...current, activeMaterialIds: [payload.material.id] }))
+      setUploadState({ status: "success", message: "Lesmateriaal klaar" })
     } catch {
-      setUploadMessage("Upload-route nog niet beschikbaar")
+      setUploadState({ status: "error", message: "Upload-route nog niet beschikbaar" })
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
@@ -366,17 +471,17 @@ export function VlaamsStudioApp() {
     "font-serif text-[34px] leading-[38px] tracking-tight text-[#1f2420] sm:text-[38px] sm:leading-[42px]"
 
   return (
-    <main className="min-h-[100dvh] bg-[#f4f1ea] text-[#1f2420]">
-      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1536px] grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)_390px]">
+    <main className="min-h-[100dvh] overflow-x-hidden bg-[#f4f1ea] text-[#1f2420]">
+      <div className="grid min-h-[100dvh] w-full grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)_390px]">
         {/* LEFT RAIL */}
-        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-5 py-6 sm:px-7 sm:py-7 lg:border-b-0 lg:border-r">
-          <div className="flex h-full flex-col gap-7">
+        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-5 py-6 sm:px-7 sm:py-7 lg:sticky lg:top-0 lg:min-h-[100dvh] lg:border-b-0 lg:border-r">
+          <div className="flex h-full flex-col gap-5">
             <p className="text-[18px] font-semibold leading-none tracking-tight text-[#1f2420]">
               Vlaams Studio
             </p>
 
             <Section eyebrow="Niveau">
-              <div className="max-w-[340px] space-y-1.5 sm:max-w-none">
+              <div className="max-w-[300px] space-y-1.5 sm:max-w-none">
                 {levels.map((level) => {
                   const isSelected = selectedLevel === level.id
                   return (
@@ -386,7 +491,7 @@ export function VlaamsStudioApp() {
                       onClick={() => selectLevel(level.id)}
                       aria-pressed={isSelected}
                       className={cn(
-                        "group flex w-full items-center justify-between rounded-[8px] px-4 py-3 text-left transition active:scale-[0.99]",
+                        "group flex w-full items-center justify-between rounded-[8px] px-4 py-2.5 text-left transition active:scale-[0.99]",
                         isSelected
                           ? "border border-transparent bg-[#2f6f57] text-white"
                           : "border border-[#e6e2d6] bg-white text-[#1f2420] hover:border-[#c4c0b3]",
@@ -423,7 +528,7 @@ export function VlaamsStudioApp() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="tabular text-[40px] font-semibold leading-[42px] tracking-tight">
-                    7
+                    {streakDays}
                   </p>
                   <p className="mt-1 text-[13px] text-[#8a8e87]">dagen op rij</p>
                 </div>
@@ -466,7 +571,7 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
-            <div className="-mx-5 border-t border-[#e0ddd2] sm:-mx-7">
+            <div className="-mx-5 mt-auto border-t border-[#e0ddd2] sm:-mx-7">
               <button
                 type="button"
                 className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-5 py-4 text-left transition hover:bg-white/65 sm:px-7"
@@ -487,7 +592,8 @@ export function VlaamsStudioApp() {
         </aside>
 
         {/* CENTER */}
-        <section className="min-w-0 px-6 py-5 sm:px-8 lg:px-16 lg:py-10">
+        <section className="min-w-0 bg-[#fbfaf6] px-6 py-5 sm:px-8 lg:min-h-[100dvh] lg:px-16 lg:py-10">
+          <div className="mx-auto w-full max-w-[1120px]">
           <header className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full bg-transparent text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5a615b]">
               <span className={cn("inline-block size-2 rounded-full", statusDot)} aria-hidden="true" />
@@ -519,7 +625,7 @@ export function VlaamsStudioApp() {
                   type="button"
                   onClick={() => selectScenario(scenario)}
                   className={cn(
-                    "relative flex h-[156px] flex-col items-center justify-end overflow-hidden rounded-[8px] border px-4 pb-4 pt-3.5 text-center transition active:scale-[0.99]",
+                    "relative flex h-[156px] flex-col items-start justify-end overflow-hidden rounded-[8px] border px-5 pb-4 pt-3.5 text-left transition active:scale-[0.99]",
                     isSelected
                       ? "border-transparent bg-[#2f6f57] text-white"
                       : "border-[#e6e2d6] bg-white text-[#1f2420] hover:border-[#c4c0b3]",
@@ -664,11 +770,15 @@ export function VlaamsStudioApp() {
             )}
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-2xl border border-[#e6e2d6] bg-white">
+          <div className="mt-5 overflow-hidden rounded-[8px] border border-[#e6e2d6] bg-white">
             {visibleTranscript ? (
               <div className="divide-y divide-[#ededdf]">
                 {visibleTranscript.map((turn) => (
-                  <TranscriptRow key={turn.id} label={transcriptLabel(turn.speaker)}>
+                  <TranscriptRow
+                    key={turn.id}
+                    label={transcriptLabel(turn.speaker)}
+                    status={turn.status}
+                  >
                     {turn.text}
                   </TranscriptRow>
                 ))}
@@ -744,7 +854,7 @@ export function VlaamsStudioApp() {
             {feedback.map((item) => (
               <div
                 key={item.label}
-                className="rounded-2xl border border-[#dcd8cb] bg-[#ece7d9] p-3.5"
+                className="rounded-[8px] border border-[#dcd8cb] bg-[#ece7d9] p-3.5"
               >
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">
                   {item.label}
@@ -768,13 +878,14 @@ export function VlaamsStudioApp() {
               </div>
             ))}
           </div>
+          </div>
         </section>
 
         {/* RIGHT RAIL — flat-on-rail layout: full-width hairlines separate sections,
             content sits directly on the ivory background. The only surfaces with
             their own card are the file upload (functional grouping) and the
             teacher note (visual emphasis). */}
-        <aside className="border-t border-[#e0ddd2] bg-[#f4f1ea] lg:border-l lg:border-t-0">
+        <aside className="border-t border-[#e0ddd2] bg-[#f4f1ea] lg:sticky lg:top-0 lg:min-h-[100dvh] lg:border-l lg:border-t-0">
           <RailSection eyebrow="Lesmateriaal" first>
             <div className="rounded-[8px] border border-dashed border-[#d6d1c3] bg-white px-4 py-4">
               <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-4">
@@ -783,16 +894,25 @@ export function VlaamsStudioApp() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold leading-none">
-                    {activeMaterial?.title ?? selectedScenario.defaultMaterial.name}
+                    {materialTitle}
                   </p>
-                  <p className="mt-1 text-[11px] text-[#8a8e87]">
-                    {activeMaterial?.kind === "pdf"
-                      ? selectedScenario.defaultMaterial.size
-                      : `Tekst · ${activeMaterial?.chunkCount ?? 0} fragmenten`}
-                  </p>
+                  <p className="mt-1 text-[11px] text-[#8a8e87]">{materialMeta}</p>
                 </div>
-                <span className="grid size-6 place-items-center rounded-full bg-[#2f6f57] text-white">
-                  <CheckMark />
+                <span
+                  className={cn(
+                    "grid size-6 place-items-center rounded-full text-white",
+                    uploadState.status === "error"
+                      ? "bg-[#c98b3a]"
+                      : uploadState.status === "uploading"
+                        ? "animate-pulse bg-[#c98b3a]"
+                        : "bg-[#2f6f57]",
+                  )}
+                >
+                  {uploadState.status === "error" ? (
+                    <AlertCircle className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                  ) : (
+                    <CheckMark />
+                  )}
                 </span>
               </div>
             </div>
@@ -812,8 +932,15 @@ export function VlaamsStudioApp() {
               className="hidden"
               onChange={(event) => void handleUpload(event.currentTarget.files)}
             />
-            {uploadMessage && (
-              <p className="mt-2 text-[11px] text-[#8a8e87]">{uploadMessage}</p>
+            {uploadState.message && (
+              <p
+                className={cn(
+                  "mt-2 text-[11px]",
+                  uploadState.status === "error" ? "text-[#9a5b28]" : "text-[#8a8e87]",
+                )}
+              >
+                {uploadState.message}
+              </p>
             )}
 
             <div className="mt-6 flex items-center justify-between">
@@ -822,7 +949,9 @@ export function VlaamsStudioApp() {
               </p>
               <Switch
                 checked={useMaterialInSession}
-                onCheckedChange={setUseMaterialInSession}
+                onCheckedChange={(checked) =>
+                  updatePreferences((current) => ({ ...current, useMaterialInSession: checked }))
+                }
                 className="data-[state=checked]:bg-[#2f6f57]"
               />
             </div>
@@ -968,15 +1097,32 @@ function RailRow({
 
 function TranscriptRow({
   label,
+  status = "final",
   children,
 }: {
   label: string
+  status?: "partial" | "final" | "error" | "tool"
   children: React.ReactNode
 }) {
   return (
-    <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-4 px-5 py-3.5">
+    <div
+      className={cn(
+        "grid grid-cols-[88px_minmax(0,1fr)] items-center gap-4 px-5 py-3.5",
+        status === "tool" && "bg-[#f7faf6]",
+        status === "error" && "bg-[#fff8ed]",
+      )}
+    >
       <span className="text-[13px] text-[#8a8e87]">{label}</span>
-      <p className="text-[14px] leading-[22px] text-[#1f2420]">{children}</p>
+      <p
+        className={cn(
+          "text-[14px] leading-[22px] text-[#1f2420]",
+          status === "partial" && "text-[#5a615b] italic",
+          status === "tool" && "text-[13px] text-[#2f6f57]",
+          status === "error" && "text-[#765327]",
+        )}
+      >
+        {children}
+      </p>
     </div>
   )
 }
@@ -1022,8 +1168,10 @@ function RealtimeGlyph() {
   )
 }
 
-function transcriptLabel(speaker: "Tutor" | "You" | "Correction") {
+function transcriptLabel(speaker: "Tutor" | "You" | "Correction" | "Material" | "System") {
   if (speaker === "You") return "Jij zei"
   if (speaker === "Correction") return "Verbeterd"
+  if (speaker === "Material") return "Materiaal"
+  if (speaker === "System") return "Systeem"
   return "Docent"
 }
