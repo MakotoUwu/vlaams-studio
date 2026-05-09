@@ -1,10 +1,34 @@
 export type TranscriptSpeaker = "Tutor" | "You" | "Correction" | "Material" | "System"
+export type RealtimePhase =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "transcribing"
+  | "tutor-speaking"
+  | "searching-materials"
+  | "reconnecting"
+  | "missing-key"
+  | "mic-error"
+  | "error"
+
+export type CorrectionPayload = {
+  original: string
+  corrected: string
+  reason: string
+  grammarPoint?: string
+  retryPrompt?: string
+}
 
 export type TranscriptTurn = {
   id: string
   speaker: TranscriptSpeaker
   text: string
   status: "partial" | "final" | "error" | "tool"
+  correction?: CorrectionPayload
+  material?: {
+    query: string
+    chunkCount: number
+  }
 }
 
 export type RealtimeFunctionCall = {
@@ -35,6 +59,7 @@ export type RealtimeEventResult = {
   turns: TranscriptTurn[]
   functionCalls: RealtimeFunctionCall[]
   errorMessage?: string
+  phase?: RealtimePhase
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -81,6 +106,37 @@ export function parseMaterialSearchArguments(rawArguments: string): MaterialSear
   }
 }
 
+export function parseCorrectionArguments(rawArguments: string): CorrectionPayload | null {
+  try {
+    const parsed = JSON.parse(rawArguments || "{}")
+    if (!isObject(parsed)) return null
+
+    const original = typeof parsed.original === "string" ? parsed.original.trim() : ""
+    const corrected = typeof parsed.corrected === "string" ? parsed.corrected.trim() : ""
+    const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : ""
+    const grammarPoint =
+      typeof parsed.grammarPoint === "string" && parsed.grammarPoint.trim()
+        ? parsed.grammarPoint.trim()
+        : undefined
+    const retryPrompt =
+      typeof parsed.retryPrompt === "string" && parsed.retryPrompt.trim()
+        ? parsed.retryPrompt.trim()
+        : undefined
+
+    if (!original || !corrected || !reason) return null
+
+    return {
+      original,
+      corrected,
+      reason,
+      ...(grammarPoint ? { grammarPoint } : {}),
+      ...(retryPrompt ? { retryPrompt } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
 export function createMaterialLookupTurn(query: string, chunkCount: number): TranscriptTurn {
   const safeQuery = query.trim() || "de huidige oefening"
 
@@ -88,10 +144,24 @@ export function createMaterialLookupTurn(query: string, chunkCount: number): Tra
     id: `material-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     speaker: "Material",
     status: "tool",
+    material: {
+      query: safeQuery,
+      chunkCount,
+    },
     text:
       chunkCount > 0
         ? `Lesmateriaal gebruikt: ${chunkCount} fragment${chunkCount === 1 ? "" : "en"} voor "${safeQuery}".`
         : `Geen passend lesmateriaal gevonden voor "${safeQuery}".`,
+  }
+}
+
+export function createCorrectionTurn(correction: CorrectionPayload): TranscriptTurn {
+  return {
+    id: `correction-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    speaker: "Correction",
+    status: "final",
+    correction,
+    text: correction.corrected,
   }
 }
 
@@ -157,6 +227,7 @@ export function applyRealtimeServerEvent(
       ],
       functionCalls: [],
       errorMessage: "Realtime sent an invalid event.",
+      phase: "error",
     }
   }
 
@@ -172,6 +243,15 @@ export function applyRealtimeServerEvent(
         mode: "replace",
       }),
       functionCalls: [],
+      phase: "listening",
+    }
+  }
+
+  if (event.type === "input_audio_buffer.speech_stopped") {
+    return {
+      turns: currentTurns,
+      functionCalls: [],
+      phase: "transcribing",
     }
   }
 
@@ -186,6 +266,7 @@ export function applyRealtimeServerEvent(
         mode: "append",
       }),
       functionCalls: [],
+      phase: "transcribing",
     }
   }
 
@@ -200,6 +281,7 @@ export function applyRealtimeServerEvent(
         mode: "replace",
       }),
       functionCalls: [],
+      phase: "transcribing",
     }
   }
 
@@ -214,6 +296,7 @@ export function applyRealtimeServerEvent(
         mode: "append",
       }),
       functionCalls: [],
+      phase: "tutor-speaking",
     }
   }
 
@@ -228,13 +311,17 @@ export function applyRealtimeServerEvent(
         mode: "replace",
       }),
       functionCalls: [],
+      phase: "tutor-speaking",
     }
   }
 
   if (event.type === "response.done") {
+    const functionCalls = (event.response?.output ?? []).filter(isFunctionCall)
+
     return {
       turns: currentTurns,
-      functionCalls: (event.response?.output ?? []).filter(isFunctionCall),
+      functionCalls,
+      phase: functionCalls.length ? "searching-materials" : "listening",
     }
   }
 
@@ -253,6 +340,7 @@ export function applyRealtimeServerEvent(
       ],
       functionCalls: [],
       errorMessage,
+      phase: "error",
     }
   }
 

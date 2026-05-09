@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest"
 
 import {
   applyRealtimeServerEvent,
+  createCorrectionTurn,
+  createMaterialLookupTurn,
   parseMaterialSearchArguments,
+  parseCorrectionArguments,
   parseRealtimeServerMessage,
 } from "@/lib/realtime/events"
 
@@ -33,6 +36,7 @@ describe("Realtime event reducer", () => {
         status: "final",
       },
     ])
+    expect(completed.phase).toBe("transcribing")
   })
 
   it("maps tutor audio transcript deltas and completions into one chat turn", () => {
@@ -82,6 +86,7 @@ describe("Realtime event reducer", () => {
       name: "search_lesson_materials",
       call_id: "call-1",
     })
+    expect(result.phase).toBe("searching-materials")
   })
 
   it("guards malformed JSON in server events and tool arguments", () => {
@@ -90,7 +95,9 @@ describe("Realtime event reducer", () => {
 
     expect(result.errorMessage).toBe("Realtime sent an invalid event.")
     expect(result.turns[0]).toMatchObject({ speaker: "System", status: "error" })
+    expect(result.phase).toBe("error")
     expect(parseMaterialSearchArguments("{not valid")).toEqual({ query: "" })
+    expect(parseCorrectionArguments("{not valid")).toBeNull()
   })
 
   it("filters material IDs from function-call arguments", () => {
@@ -99,5 +106,59 @@ describe("Realtime event reducer", () => {
         JSON.stringify({ query: "prijzen", materialIds: ["lesson-1", 42, "lesson-2"] }),
       ),
     ).toEqual({ query: "prijzen", materialIds: ["lesson-1", "lesson-2"] })
+  })
+
+  it("maps speech stopped and tutor transcript events into realtime phases", () => {
+    expect(
+      applyRealtimeServerEvent([], {
+        type: "input_audio_buffer.speech_stopped",
+      }).phase,
+    ).toBe("transcribing")
+
+    expect(
+      applyRealtimeServerEvent([], {
+        type: "response.output_audio_transcript.delta",
+        response_id: "resp-1",
+        delta: "Goed, ",
+      }).phase,
+    ).toBe("tutor-speaking")
+  })
+
+  it("parses correction tool arguments and creates a correction turn", () => {
+    const correction = parseCorrectionArguments(
+      JSON.stringify({
+        original: "Ik wil brood",
+        corrected: "Ik zou graag een brood willen.",
+        reason: "Klinkt beleefder in de bakkerij.",
+        grammarPoint: "zou graag",
+        retryPrompt: "Zeg het nog eens met zou graag.",
+      }),
+    )
+
+    expect(correction).toEqual({
+      original: "Ik wil brood",
+      corrected: "Ik zou graag een brood willen.",
+      reason: "Klinkt beleefder in de bakkerij.",
+      grammarPoint: "zou graag",
+      retryPrompt: "Zeg het nog eens met zou graag.",
+    })
+
+    expect(createCorrectionTurn(correction!)).toMatchObject({
+      speaker: "Correction",
+      status: "final",
+      text: "Ik zou graag een brood willen.",
+      correction,
+    })
+  })
+
+  it("adds material metadata to material lookup turns", () => {
+    expect(createMaterialLookupTurn("prijzen", 2)).toMatchObject({
+      speaker: "Material",
+      status: "tool",
+      material: {
+        query: "prijzen",
+        chunkCount: 2,
+      },
+    })
   })
 })

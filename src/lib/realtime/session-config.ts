@@ -7,6 +7,9 @@ export type RealtimeSessionInput = {
   scenarioId: string
   materialIds: string[]
   mode: "roleplay" | "review"
+  focusedVocabulary?: string[]
+  focusedGrammar?: string | null
+  correctionStyle?: "gentle" | "direct"
 }
 
 export type RealtimeSessionConfig = {
@@ -34,7 +37,7 @@ export type RealtimeSessionConfig = {
   }
   tools: Array<{
     type: "function"
-    name: "search_lesson_materials"
+    name: "search_lesson_materials" | "record_correction"
     description: string
     parameters: {
       type: "object"
@@ -74,6 +77,10 @@ Do not lecture. Continue the scene after each correction.
 Correct lightly after the learner speaks.
 Give one natural correction and one better phrase, then return to the roleplay.
 Prefer practical Flemish wording over textbook explanations.
+When you correct a learner phrase, call record_correction with the original phrase, corrected phrase, brief reason, grammar point when relevant, and a short retry prompt.
+Correction style: ${input.correctionStyle ?? "gentle"}.
+${input.focusedVocabulary?.length ? `Prioritize these vocabulary goals: ${input.focusedVocabulary.join(", ")}.` : ""}
+${input.focusedGrammar ? `Current grammar focus: ${input.focusedGrammar}.` : ""}
 
 # Lesson Context
 ${materialLine}
@@ -83,6 +90,7 @@ If no relevant material is available, say so briefly and continue from the curre
 # Tools
 Use only the provided tools.
 Call search_lesson_materials when you need vocabulary, grammar, teacher notes, or examples from uploaded lesson material.
+Call record_correction after giving a meaningful correction so the app can show it in the learner timeline.
 Do not pretend you read a file unless the tool returned relevant chunks.
 
 # Unclear Audio
@@ -139,6 +147,38 @@ export function buildRealtimeSessionConfig(input: RealtimeSessionInput): Realtim
             },
           },
           required: ["query"],
+        },
+      },
+      {
+        type: "function",
+        name: "record_correction",
+        description:
+          "Record a concise correction for the learner UI after the tutor corrects a Flemish or Dutch phrase.",
+        parameters: {
+          type: "object",
+          properties: {
+            original: {
+              type: "string",
+              description: "The learner phrase that needs improvement.",
+            },
+            corrected: {
+              type: "string",
+              description: "A natural corrected Flemish/Dutch phrase.",
+            },
+            reason: {
+              type: "string",
+              description: "A brief learner-friendly reason for the correction.",
+            },
+            grammarPoint: {
+              type: "string",
+              description: "Optional grammar or pronunciation focus, if relevant.",
+            },
+            retryPrompt: {
+              type: "string",
+              description: "A short prompt asking the learner to try the corrected phrase again.",
+            },
+          },
+          required: ["original", "corrected", "reason"],
         },
       },
     ],

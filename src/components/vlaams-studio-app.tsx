@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
   AlertCircle,
+  BookOpen,
   ChevronDown,
   ChevronRight,
+  CheckCircle2,
   CroissantIcon,
   FileText,
   Flame,
   Home,
   LogOut,
+  MessageCircle,
   Mic,
   MicOff,
   Pause,
@@ -19,6 +22,7 @@ import {
   Stethoscope,
   TrainFront,
   TrendingUp,
+  X,
 } from "lucide-react"
 
 import { Switch } from "@/components/ui/switch"
@@ -34,6 +38,14 @@ import {
 } from "@/lib/practice-data"
 import { cn } from "@/lib/utils"
 import { useRealtimeSession } from "@/hooks/use-realtime-session"
+import type { CorrectionPayload, TranscriptTurn } from "@/lib/realtime/events"
+import {
+  cloneDefaultPreferences,
+  focusForScenario,
+  metricDetailCopy,
+  panelTitleFor,
+  updateVocabularyGoals,
+} from "@/lib/studio/ui-state"
 
 type PracticeProgress = Record<PracticeLevel, number>
 type PracticePreferences = {
@@ -45,6 +57,10 @@ type PracticePreferences = {
   feedback: FeedbackItem[]
   useMaterialInSession: boolean
   activeMaterialIds: string[]
+  selectedVocabularyGoals: string[]
+  focusedGrammar: string | null
+  correctionStyle: "gentle" | "direct"
+  showCaptions: boolean
 }
 
 const progressStorageKey = "vlaams-studio-progress-v2"
@@ -64,7 +80,14 @@ const defaultPreferences: PracticePreferences = {
   feedback: seedFeedback,
   useMaterialInSession: true,
   activeMaterialIds: ["sample-bakery"],
+  selectedVocabularyGoals: ["broodsoorten"],
+  focusedGrammar: null,
+  correctionStyle: "gentle",
+  showCaptions: true,
 }
+
+const learnerName = "Oleksandr T."
+const learnerInitials = "OT"
 
 type UploadState = {
   status: "idle" | "uploading" | "success" | "error"
@@ -76,6 +99,15 @@ type SeedExchange = {
   corrected: { before: string; highlight: string; after: string }
   note: string
 }
+
+type ActivePanel =
+  | { type: "profile" }
+  | { type: "settings" }
+  | { type: "reset" }
+  | { type: "setup" }
+  | { type: "metric"; metric: FeedbackItem }
+  | { type: "grammar"; point: string }
+  | null
 
 const seedExchange: SeedExchange = {
   said: "Ik zou graag een volkoren brood en twee chocoladebroodjes, alstublieft.",
@@ -153,6 +185,12 @@ function sanitizeFeedback(items: unknown): FeedbackItem[] {
   return parsed.length ? parsed : seedFeedback
 }
 
+function sanitizeStringArray(items: unknown, fallback: string[] = []) {
+  if (!Array.isArray(items)) return fallback
+  const parsed = items.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+  return parsed.length ? parsed : fallback
+}
+
 function readStoredPreferences(): PracticePreferences {
   const selectedScenarioId = loadStoredScenario()
   const selectedScenario = scenarios.find((scenario) => scenario.id === selectedScenarioId)
@@ -179,6 +217,17 @@ function readStoredPreferences(): PracticePreferences {
         ? storedState.useMaterialInSession
         : defaultPreferences.useMaterialInSession,
     activeMaterialIds: storedActiveMaterials.length ? storedActiveMaterials : defaultPreferences.activeMaterialIds,
+    selectedVocabularyGoals: sanitizeStringArray(
+      storedState.selectedVocabularyGoals,
+      defaultPreferences.selectedVocabularyGoals,
+    ),
+    focusedGrammar: typeof storedState.focusedGrammar === "string" ? storedState.focusedGrammar : null,
+    correctionStyle:
+      storedState.correctionStyle === "direct" ? "direct" : defaultPreferences.correctionStyle,
+    showCaptions:
+      typeof storedState.showCaptions === "boolean"
+        ? storedState.showCaptions
+        : defaultPreferences.showCaptions,
   }
 }
 
@@ -224,6 +273,14 @@ function parsePreferencesSnapshot(snapshot: string): PracticePreferences {
       activeMaterialIds: Array.isArray(parsed.activeMaterialIds)
         ? parsed.activeMaterialIds.filter((id): id is string => typeof id === "string")
         : defaultPreferences.activeMaterialIds,
+      selectedVocabularyGoals: sanitizeStringArray(
+        parsed.selectedVocabularyGoals,
+        defaultPreferences.selectedVocabularyGoals,
+      ),
+      focusedGrammar: typeof parsed.focusedGrammar === "string" ? parsed.focusedGrammar : null,
+      correctionStyle: parsed.correctionStyle === "direct" ? "direct" : defaultPreferences.correctionStyle,
+      showCaptions:
+        typeof parsed.showCaptions === "boolean" ? parsed.showCaptions : defaultPreferences.showCaptions,
     }
   } catch {
     return defaultPreferences
@@ -243,10 +300,15 @@ function subscribeToPreferences(onStoreChange: () => void) {
 }
 
 function savePreferences(preferences: PracticePreferences) {
+  const nextSnapshot = JSON.stringify(preferences)
+  if (typeof window !== "undefined" && window.localStorage.getItem(studioStateStorageKey) === nextSnapshot) {
+    return
+  }
+
   window.localStorage.setItem(levelStorageKey, preferences.selectedLevel)
   window.localStorage.setItem(scenarioStorageKey, preferences.selectedScenarioId)
   window.localStorage.setItem(progressStorageKey, JSON.stringify(preferences.progress))
-  window.localStorage.setItem(studioStateStorageKey, JSON.stringify(preferences))
+  window.localStorage.setItem(studioStateStorageKey, nextSnapshot)
   window.dispatchEvent(new Event(preferenceChangeEvent))
 }
 
@@ -254,9 +316,24 @@ function updatePreferences(updater: (preferences: PracticePreferences) => Practi
   savePreferences(updater(readStoredPreferences()))
 }
 
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  )
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const update = (event: MediaQueryListEvent) => setPrefersReducedMotion(event.matches)
+    query.addEventListener("change", update)
+    return () => query.removeEventListener("change", update)
+  }, [])
+
+  return prefersReducedMotion
+}
+
 // Gaussian-enveloped bar heights — middle bars are tall, edges taper off.
-// Live: bars dance with smoothed pseudo-random amplitude.
-// Idle: a slow sine ripple keeps the form "breathing" instead of dead flat.
+// The hook is used only inside the isolated waveform leaf, so animation ticks
+// do not re-render the rails, panels, or conversation list.
 function useWaveform(active: boolean, count = 68) {
   const center = (count - 1) / 2
   const sigma = count / 3.0 // sharper envelope so edges become near-dots
@@ -268,8 +345,11 @@ function useWaveform(active: boolean, count = 68) {
     })
 
   const [heights, setHeights] = useState<number[]>(seedHeights)
+  const prefersReducedMotion = usePrefersReducedMotion()
 
   useEffect(() => {
+    if (prefersReducedMotion) return
+
     let frame = 0
     const tick = () => {
       frame += 1
@@ -287,7 +367,7 @@ function useWaveform(active: boolean, count = 68) {
     }
     const interval = window.setInterval(tick, active ? 95 : 260)
     return () => window.clearInterval(interval)
-  }, [active, center, sigma])
+  }, [active, center, sigma, prefersReducedMotion])
 
   return heights
 }
@@ -295,6 +375,33 @@ function useWaveform(active: boolean, count = 68) {
 function scoreColor(score: number) {
   if (score >= 80) return "text-[#2f6f57]"
   return "text-[#c98b3a]"
+}
+
+function createSeedConversationTurns(exchange: SeedExchange, showNote: boolean): TranscriptTurn[] {
+  const correctionText = `${exchange.corrected.before}${exchange.corrected.highlight}${exchange.corrected.after}`
+  const correction: CorrectionPayload = {
+    original: exchange.said,
+    corrected: correctionText,
+    reason: showNote ? exchange.note : "Correctie opgeslagen.",
+    grammarPoint: "Samenstellingen",
+    retryPrompt: "Zeg de verbeterde zin nog eens rustig.",
+  }
+
+  return [
+    {
+      id: "seed-you",
+      speaker: "You",
+      status: "final",
+      text: exchange.said,
+    },
+    {
+      id: "seed-correction",
+      speaker: "Correction",
+      status: "final",
+      text: correctionText,
+      correction,
+    },
+  ]
 }
 
 export function VlaamsStudioApp() {
@@ -307,24 +414,28 @@ export function VlaamsStudioApp() {
   const preferences = useMemo(() => parsePreferencesSnapshot(preferenceSnapshot), [preferenceSnapshot])
   const {
     activeMaterialIds,
+    correctionStyle,
     feedback,
+    focusedGrammar,
     progress,
+    selectedVocabularyGoals,
     selectedLevel,
     selectedScenarioId,
     sessionScore,
+    showCaptions,
     streakDays,
     useMaterialInSession,
   } = preferences
   const [materials, setMaterials] = useState<LessonMaterialSummary[]>(seedMaterials)
   const [uploadState, setUploadState] = useState<UploadState>({ status: "idle", message: null })
   const [showCorrectionNote, setShowCorrectionNote] = useState(true)
+  const [activePanel, setActivePanel] = useState<ActivePanel>(null)
   const realtime = useRealtimeSession()
 
   const selectedScenario: Scenario =
     scenarios.find((scenario) => scenario.id === selectedScenarioId) ?? scenarios[0]
   const isLive = realtime.status === "live"
   const isConnecting = realtime.status === "connecting"
-  const waveformHeights = useWaveform(isLive)
 
   const activeMaterial = materials.find((material) => activeMaterialIds.includes(material.id)) ?? materials[0]
   const hasUploadedMaterial = Boolean(activeMaterial && activeMaterial.id !== "sample-bakery")
@@ -336,7 +447,9 @@ export function VlaamsStudioApp() {
       ? `PDF · ${activeMaterial.chunkCount} fragmenten`
       : `Tekst · ${activeMaterial?.chunkCount ?? 0} fragmenten`
     : selectedScenario.defaultMaterial.size
-  const visibleTranscript = realtime.transcript.length ? realtime.transcript : null
+  const conversationTurns = realtime.transcript.length
+    ? realtime.transcript
+    : createSeedConversationTurns(seedExchange, showCorrectionNote)
 
   useEffect(() => {
     let isActive = true
@@ -373,18 +486,24 @@ export function VlaamsStudioApp() {
 
   function selectLevel(level: PracticeLevel) {
     const nextScenario = scenarios.find((scenario) => scenario.level === level)
+    const nextFocus = nextScenario ? focusForScenario(nextScenario) : null
     updatePreferences((current) => ({
       ...current,
       selectedLevel: level,
       selectedScenarioId: nextScenario?.id ?? current.selectedScenarioId,
+      selectedVocabularyGoals: nextFocus?.selectedVocabularyGoals ?? current.selectedVocabularyGoals,
+      focusedGrammar: nextFocus?.focusedGrammar ?? current.focusedGrammar,
     }))
   }
 
   function selectScenario(scenario: Scenario) {
+    const nextFocus = focusForScenario(scenario)
     updatePreferences((current) => ({
       ...current,
       selectedLevel: scenario.level,
       selectedScenarioId: scenario.id,
+      selectedVocabularyGoals: nextFocus.selectedVocabularyGoals,
+      focusedGrammar: nextFocus.focusedGrammar,
     }))
   }
 
@@ -411,7 +530,31 @@ export function VlaamsStudioApp() {
       scenarioId: selectedScenario.id,
       materialIds: useMaterialInSession ? activeMaterialIds : [],
       mode: "roleplay",
+      focusedVocabulary: selectedVocabularyGoals,
+      focusedGrammar,
+      correctionStyle,
     })
+  }
+
+  function toggleVocabularyGoal(goal: string) {
+    updatePreferences((current) => {
+      return {
+        ...current,
+        selectedVocabularyGoals: updateVocabularyGoals(current.selectedVocabularyGoals, goal),
+      }
+    })
+  }
+
+  function openGrammarFocus(point: string) {
+    updatePreferences((current) => ({ ...current, focusedGrammar: point }))
+    setActivePanel({ type: "grammar", point })
+  }
+
+  function resetLocalSessionState() {
+    if (isLive) realtime.disconnect()
+    savePreferences(cloneDefaultPreferences(defaultPreferences))
+    setUploadState({ status: "idle", message: "Lokale oefenstatus gereset" })
+    setActivePanel(null)
   }
 
   async function handleUpload(fileList: FileList | null) {
@@ -466,6 +609,19 @@ export function VlaamsStudioApp() {
       : isConnecting
         ? "bg-[#c98b3a] animate-pulse"
         : "bg-[#2f6f57]"
+
+  const phaseCopy = {
+    idle: "Ik luister…",
+    connecting: "Verbinden…",
+    listening: "Ik luister…",
+    transcribing: "Transcriptie loopt…",
+    "tutor-speaking": "Docent antwoordt…",
+    "searching-materials": "Lesmateriaal zoeken…",
+    reconnecting: "Opnieuw verbinden…",
+    "missing-key": "API-sleutel ontbreekt",
+    "mic-error": "Microfoon geblokkeerd",
+    error: "Verbinding mislukt",
+  }[realtime.phase]
 
   const headlineClass =
     "font-serif text-[34px] leading-[38px] tracking-tight text-[#1f2420] sm:text-[38px] sm:leading-[42px]"
@@ -574,19 +730,24 @@ export function VlaamsStudioApp() {
             <div className="-mx-5 mt-auto border-t border-[#e0ddd2] sm:-mx-7">
               <button
                 type="button"
+                onClick={() => setActivePanel({ type: "profile" })}
                 className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-5 py-4 text-left transition hover:bg-white/65 sm:px-7"
               >
                 <span className="grid size-10 place-items-center rounded-full bg-[#607568] text-[12px] font-semibold text-white">
-                  JL
+                  {learnerInitials}
                 </span>
                 <span className="flex flex-col leading-tight">
-                  <span className="text-[13px] font-semibold">Joris L.</span>
+                  <span className="text-[13px] font-semibold">{learnerName}</span>
                   <span className="text-[11px] text-[#8a8e87]">Bekijk profiel</span>
                 </span>
                 <ChevronDown className="ml-auto size-4 text-[#8a8e87]" aria-hidden="true" />
               </button>
-              <RailRow icon={Settings}>Instellingen</RailRow>
-              <RailRow icon={LogOut}>Uitloggen</RailRow>
+              <RailRow icon={Settings} onClick={() => setActivePanel({ type: "settings" })}>
+                Instellingen
+              </RailRow>
+              <RailRow icon={LogOut} onClick={() => setActivePanel({ type: "reset" })}>
+                Uitloggen
+              </RailRow>
             </div>
           </div>
         </aside>
@@ -664,26 +825,14 @@ export function VlaamsStudioApp() {
 
           <div className="mt-4 grid place-items-center text-center">
             <p className="text-[14px] text-[#5a615b]">
-              {isLive
-                ? "Aan het opnemen…"
-                : isConnecting
-                  ? "Verbinden…"
-                  : realtime.status === "mic-error"
-                    ? "Microfoon geblokkeerd"
-                    : "Ik luister…"}
+              {phaseCopy}
             </p>
 
             <div
               className="mt-2 flex h-[58px] w-full max-w-[600px] items-end justify-center gap-[3px]"
               aria-hidden="true"
             >
-              {waveformHeights.map((value, index) => (
-                <span
-                  key={index}
-                  className="block w-[2.5px] rounded-full bg-[#2f6f57] transition-[height] duration-100 ease-out"
-                  style={{ height: `${Math.max(4, Math.min(96, value))}%` }}
-                />
-              ))}
+              <VoiceWaveform active={isLive} />
             </div>
 
             {/* Button + caption pairs — each caption sits centered under its own button.
@@ -770,65 +919,13 @@ export function VlaamsStudioApp() {
             )}
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-[8px] border border-[#e6e2d6] bg-white">
-            {visibleTranscript ? (
-              <div className="divide-y divide-[#ededdf]">
-                {visibleTranscript.map((turn) => (
-                  <TranscriptRow
-                    key={turn.id}
-                    label={transcriptLabel(turn.speaker)}
-                    status={turn.status}
-                  >
-                    {turn.text}
-                  </TranscriptRow>
-                ))}
-              </div>
-            ) : (
-              <>
-                <TranscriptRow label="Jij zei">{seedExchange.said}</TranscriptRow>
-                <div className="border-t border-[#ededdf]">
-                  <div className="grid grid-cols-[88px_minmax(0,1fr)_auto] items-center gap-4 px-5 py-3.5">
-                    <span className="text-[13px] text-[#8a8e87]">Verbeterd</span>
-                    <p className="text-[14px] leading-[22px] text-[#1f2420]">
-                      {seedExchange.corrected.before}
-                      <mark className="bg-transparent font-semibold text-[#2f6f57] underline decoration-[#2f6f57]/40 decoration-1 underline-offset-4">
-                        {seedExchange.corrected.highlight}
-                      </mark>
-                      {seedExchange.corrected.after}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="grid size-7 place-items-center rounded-full bg-[#2f6f57] text-white"
-                        aria-hidden="true"
-                      >
-                        <CheckMark />
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShowCorrectionNote((value) => !value)}
-                        aria-label={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
-                        title={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
-                        data-control-tooltip={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
-                        className="grid size-7 place-items-center rounded-full border border-[#e0ddd2] text-[#5a615b] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
-                      >
-                        <ChevronDown
-                          className={cn(
-                            "size-4 transition-transform",
-                            showCorrectionNote ? "rotate-180" : "rotate-0",
-                          )}
-                        />
-                      </button>
-                    </div>
-                  </div>
-                  {showCorrectionNote && (
-                    <p className="px-5 pb-3.5 pl-[120px] text-[12.5px] italic leading-[20px] text-[#8a8e87]">
-                      {seedExchange.note}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
+          <PracticeConversation
+            turns={conversationTurns}
+            isLive={isLive}
+            showCaptions={showCaptions}
+            showSeedCorrectionNote={showCorrectionNote}
+            onToggleSeedCorrectionNote={() => setShowCorrectionNote((value) => !value)}
+          />
 
           <div className="mt-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -871,6 +968,7 @@ export function VlaamsStudioApp() {
                 <p className="mt-2 text-[13px] leading-[18px] text-[#5a615b]">{item.note}</p>
                 <button
                   type="button"
+                  onClick={() => setActivePanel({ type: "metric", metric: item })}
                   className="mt-3 inline-flex items-center rounded-md border border-[#e0ddd2] px-3 py-1.5 text-[12px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
                 >
                   Details
@@ -920,10 +1018,11 @@ export function VlaamsStudioApp() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border border-[#e0ddd2] bg-white px-3 text-[13px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
+              disabled={uploadState.status === "uploading"}
+              className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border border-[#e0ddd2] bg-white px-3 text-[13px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57] disabled:opacity-60"
             >
               <RotateCcw className="size-4" strokeWidth={1.6} aria-hidden="true" />
-              Materiaal vervangen
+              {uploadState.status === "uploading" ? "Materiaal verwerken" : "Materiaal vervangen"}
             </button>
             <input
               ref={fileInputRef}
@@ -962,6 +1061,7 @@ export function VlaamsStudioApp() {
             <p className="mt-1.5 text-[12px] text-[#8a8e87]">{selectedScenario.topicCategory}</p>
             <button
               type="button"
+              onClick={() => setActivePanel({ type: "setup" })}
               className="mt-3 inline-flex items-center rounded-[8px] border border-[#e0ddd2] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
             >
               Aanpassen
@@ -970,19 +1070,25 @@ export function VlaamsStudioApp() {
 
           <RailSection eyebrow="Woordenschatdoelen">
             <div className="flex flex-wrap gap-x-2 gap-y-1.5">
-              {selectedScenario.vocabularyGoals.map((word, index) => (
-                <span
+              {selectedScenario.vocabularyGoals.map((word) => {
+                const isGoalSelected = selectedVocabularyGoals.includes(word)
+                return (
+                <button
                   key={word}
+                  type="button"
+                  onClick={() => toggleVocabularyGoal(word)}
+                  aria-pressed={isGoalSelected}
                   className={cn(
-                    "inline-flex items-center rounded-[5px] border px-2.5 py-1.5 text-[11px] font-medium leading-none text-[#5a615b]",
-                    index === 0
+                    "inline-flex items-center rounded-[5px] border px-2.5 py-1.5 text-[11px] font-medium leading-none text-[#5a615b] transition hover:border-[#2f6f57] hover:text-[#2f6f57]",
+                    isGoalSelected
                       ? "border-[#cbd9cf] bg-[#eef5f0] text-[#2f6f57]"
                       : "border-[#e6e2d6] bg-white",
                   )}
                 >
                   {word}
-                </span>
-              ))}
+                </button>
+                )
+              })}
             </div>
           </RailSection>
 
@@ -992,7 +1098,12 @@ export function VlaamsStudioApp() {
                 <li key={point}>
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-2 text-left text-[13px] leading-[20px] text-[#1f2420] transition hover:text-[#2f6f57]"
+                    onClick={() => openGrammarFocus(point)}
+                    aria-pressed={focusedGrammar === point}
+                    className={cn(
+                      "flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-2 text-left text-[13px] leading-[20px] transition hover:text-[#2f6f57]",
+                      focusedGrammar === point ? "text-[#2f6f57]" : "text-[#1f2420]",
+                    )}
                   >
                     <span>{point}</span>
                     <ChevronRight
@@ -1019,7 +1130,556 @@ export function VlaamsStudioApp() {
           </RailSection>
         </aside>
       </div>
+      <StudioPanelOverlay
+        panel={activePanel}
+        preferences={preferences}
+        selectedScenario={selectedScenario}
+        materials={materials}
+        activeMaterial={activeMaterial}
+        onClose={() => setActivePanel(null)}
+        onReset={resetLocalSessionState}
+        onSelectLevel={selectLevel}
+        onSelectScenario={selectScenario}
+        onToggleVocabulary={toggleVocabularyGoal}
+        onSetCorrectionStyle={(style) =>
+          updatePreferences((current) => ({ ...current, correctionStyle: style }))
+        }
+        onSetShowCaptions={(checked) =>
+          updatePreferences((current) => ({ ...current, showCaptions: checked }))
+        }
+        onSetUseMaterial={(checked) =>
+          updatePreferences((current) => ({ ...current, useMaterialInSession: checked }))
+        }
+      />
     </main>
+  )
+}
+
+function VoiceWaveform({ active }: { active: boolean }) {
+  const waveformHeights = useWaveform(active)
+
+  return (
+    <>
+      {waveformHeights.map((value, index) => (
+        <span
+          key={index}
+          className="block w-[2.5px] rounded-full bg-[#2f6f57] transition-[height] duration-100 ease-out"
+          style={{ height: `${Math.max(4, Math.min(96, value))}%` }}
+        />
+      ))}
+    </>
+  )
+}
+
+function PracticeConversation({
+  turns,
+  isLive,
+  showCaptions,
+  showSeedCorrectionNote,
+  onToggleSeedCorrectionNote,
+}: {
+  turns: TranscriptTurn[]
+  isLive: boolean
+  showCaptions: boolean
+  showSeedCorrectionNote: boolean
+  onToggleSeedCorrectionNote: () => void
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [isPinnedToLive, setIsPinnedToLive] = useState(true)
+
+  useEffect(() => {
+    if (!isPinnedToLive) return
+    const container = scrollRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+  }, [turns, isPinnedToLive])
+
+  function handleScroll() {
+    const container = scrollRef.current
+    if (!container) return
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    setIsPinnedToLive(distanceFromBottom < 28)
+  }
+
+  function jumpToLive() {
+    const container = scrollRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
+    setIsPinnedToLive(true)
+  }
+
+  const visibleTurns = showCaptions
+    ? turns
+    : turns.filter((turn) => turn.speaker === "Correction" || turn.speaker === "Material" || turn.speaker === "System")
+
+  return (
+    <section className="mt-5 overflow-hidden rounded-[8px] border border-[#e6e2d6] bg-white">
+      <div className="flex items-center justify-between border-b border-[#ededdf] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <MessageCircle className="size-4 text-[#2f6f57]" strokeWidth={1.6} aria-hidden="true" />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">
+            Gesprek
+          </p>
+        </div>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em]",
+            isLive ? "text-[#2f6f57]" : "text-[#8a8e87]",
+          )}
+        >
+          <span className={cn("size-1.5 rounded-full", isLive ? "bg-[#2f6f57]" : "bg-[#cfcec5]")} />
+          {isLive ? "Live" : "Voorbeeld"}
+        </span>
+      </div>
+
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        role="log"
+        aria-live="polite"
+        aria-label="Gesprekstranscript"
+        className="relative max-h-[320px] overflow-y-auto scroll-smooth"
+      >
+        <div className="divide-y divide-[#ededdf]">
+          {!showCaptions && (
+            <div className="px-5 py-3 text-[13px] leading-[20px] text-[#5a615b]">
+              Bijschriften zijn verborgen. Correcties en lesmateriaal blijven zichtbaar.
+            </div>
+          )}
+          {visibleTurns.length ? (
+            visibleTurns.map((turn) => (
+              <ConversationTurn
+                key={turn.id}
+                turn={turn}
+                showSeedCorrectionNote={showSeedCorrectionNote}
+                onToggleSeedCorrectionNote={onToggleSeedCorrectionNote}
+              />
+            ))
+          ) : (
+            <div className="px-5 py-4 text-[13px] leading-[20px] text-[#8a8e87]">
+              Nog geen correcties in deze sessie.
+            </div>
+          )}
+        </div>
+        {!isPinnedToLive && (
+          <button
+            type="button"
+            onClick={jumpToLive}
+            className="sticky bottom-3 left-1/2 z-[1] -translate-x-1/2 rounded-full border border-[#d6d1c3] bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2f6f57] shadow-[0_8px_24px_rgba(31,36,32,0.08)]"
+          >
+            Nieuwste
+          </button>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ConversationTurn({
+  turn,
+  showSeedCorrectionNote,
+  onToggleSeedCorrectionNote,
+}: {
+  turn: TranscriptTurn
+  showSeedCorrectionNote: boolean
+  onToggleSeedCorrectionNote: () => void
+}) {
+  if (turn.speaker === "Correction" && turn.correction) {
+    return (
+      <div className="px-5 py-4">
+        <div className="grid gap-4 sm:grid-cols-[88px_minmax(0,1fr)_auto] sm:items-start">
+          <span className="text-[13px] text-[#8a8e87]">Verbeterd</span>
+          <CorrectionCard correction={turn.correction} showReason={turn.id !== "seed-correction" || showSeedCorrectionNote} />
+          {turn.id === "seed-correction" && (
+            <button
+              type="button"
+              onClick={onToggleSeedCorrectionNote}
+              aria-label={showSeedCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
+              title={showSeedCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
+              data-control-tooltip={showSeedCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
+              className="grid size-7 place-items-center rounded-full border border-[#e0ddd2] text-[#5a615b] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
+            >
+              <ChevronDown
+                className={cn(
+                  "size-4 transition-transform",
+                  showSeedCorrectionNote ? "rotate-180" : "rotate-0",
+                )}
+              />
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (turn.speaker === "Material") {
+    return (
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 bg-[#f7faf6] px-5 py-3.5">
+        <span className="text-[13px] text-[#8a8e87]">Materiaal</span>
+        <p className="flex items-center gap-2 text-[13px] leading-[20px] text-[#2f6f57]">
+          <BookOpen className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+          {turn.text}
+        </p>
+      </div>
+    )
+  }
+
+  if (turn.speaker === "System") {
+    return (
+      <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 bg-[#fff8ed] px-5 py-3.5">
+        <span className="text-[13px] text-[#8a8e87]">Systeem</span>
+        <p className="flex items-center gap-2 text-[13px] leading-[20px] text-[#765327]">
+          <AlertCircle className="size-4 shrink-0" strokeWidth={1.6} aria-hidden="true" />
+          {turn.text}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 px-5 py-3.5">
+      <span className="text-[13px] text-[#8a8e87]">{transcriptLabel(turn.speaker)}</span>
+      <div>
+        <p
+          className={cn(
+            "text-[14px] leading-[22px] text-[#1f2420]",
+            turn.status === "partial" && "text-[#5a615b] italic",
+          )}
+        >
+          {turn.text}
+        </p>
+        {turn.status === "partial" && (
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-[#8a8e87]">
+            live transcriptie
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CorrectionCard({
+  correction,
+  showReason,
+}: {
+  correction: CorrectionPayload
+  showReason: boolean
+}) {
+  return (
+    <div className="rounded-[8px] border border-[#d8e4da] bg-[#f7faf6] p-3">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[#2f6f57] text-white">
+          <CheckMark />
+        </span>
+        <div className="min-w-0">
+          <p className="mb-1 text-[12px] leading-[18px] text-[#8a8e87] line-through decoration-[#c98b3a]/50">
+            {correction.original}
+          </p>
+          <p className="text-[14px] leading-[22px] text-[#1f2420]">
+            <span className="font-semibold text-[#2f6f57] underline decoration-[#2f6f57]/40 decoration-1 underline-offset-4">
+              {correction.corrected}
+            </span>
+          </p>
+          {showReason && (
+            <div className="mt-2 space-y-1 text-[12.5px] leading-[19px] text-[#5a615b]">
+              <p>{correction.reason}</p>
+              {correction.grammarPoint && (
+                <p className="text-[#8a8e87]">Focus: {correction.grammarPoint}</p>
+              )}
+              {correction.retryPrompt && (
+                <p className="font-medium text-[#2f6f57]">{correction.retryPrompt}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StudioPanelOverlay({
+  panel,
+  preferences,
+  selectedScenario,
+  materials,
+  activeMaterial,
+  onClose,
+  onReset,
+  onSelectLevel,
+  onSelectScenario,
+  onToggleVocabulary,
+  onSetCorrectionStyle,
+  onSetShowCaptions,
+  onSetUseMaterial,
+}: {
+  panel: ActivePanel
+  preferences: PracticePreferences
+  selectedScenario: Scenario
+  materials: LessonMaterialSummary[]
+  activeMaterial?: LessonMaterialSummary
+  onClose: () => void
+  onReset: () => void
+  onSelectLevel: (level: PracticeLevel) => void
+  onSelectScenario: (scenario: Scenario) => void
+  onToggleVocabulary: (goal: string) => void
+  onSetCorrectionStyle: (style: PracticePreferences["correctionStyle"]) => void
+  onSetShowCaptions: (checked: boolean) => void
+  onSetUseMaterial: (checked: boolean) => void
+}) {
+  if (!panel) return null
+
+  const title = panelTitleFor(panel)
+
+  return (
+    <div className="fixed inset-0 z-20 grid place-items-center bg-[#1f2420]/18 px-4 py-6 backdrop-blur-[2px]">
+      <section className="w-full max-w-[520px] overflow-hidden rounded-[10px] border border-[#d6d1c3] bg-[#fbfaf6] shadow-[0_24px_70px_-30px_rgba(31,36,32,0.45)]">
+        <div className="flex items-center justify-between border-b border-[#e0ddd2] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">
+              Vlaams Studio
+            </p>
+            <h2 className="mt-1 text-[18px] font-semibold tracking-tight text-[#1f2420]">{title}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Paneel sluiten"
+            className="grid size-8 place-items-center rounded-full border border-[#e0ddd2] bg-white text-[#5a615b] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
+          >
+            <X className="size-4" strokeWidth={1.7} />
+          </button>
+        </div>
+        <div className="max-h-[70dvh] overflow-y-auto p-5">
+          {panel.type === "profile" && (
+            <div className="space-y-5">
+              <div className="flex items-center gap-4">
+                <span className="grid size-12 place-items-center rounded-full bg-[#607568] text-[13px] font-semibold text-white">
+                  {learnerInitials}
+                </span>
+                <div>
+                  <p className="text-[15px] font-semibold">{learnerName}</p>
+                  <p className="text-[13px] text-[#8a8e87]">
+                    {preferences.streakDays} dagen op rij · {preferences.progress[preferences.selectedLevel]}% {preferences.selectedLevel}
+                  </p>
+                </div>
+              </div>
+              <PanelStat label="Huidig niveau" value={preferences.selectedLevel} note={selectedScenario.topicCategory} />
+              <PanelStat label="Sessiescore" value={`${preferences.sessionScore} / 100`} note="Laatste lokale oefensessie" />
+              <PanelStat label="Actieve doelen" value={`${preferences.selectedVocabularyGoals.length}`} note={preferences.selectedVocabularyGoals.join(", ")} />
+            </div>
+          )}
+
+          {panel.type === "settings" && (
+            <div className="space-y-5">
+              <PanelSwitch
+                label="Bijschriften tonen"
+                checked={preferences.showCaptions}
+                onCheckedChange={onSetShowCaptions}
+              />
+              <PanelSwitch
+                label="Lesmateriaal gebruiken"
+                checked={preferences.useMaterialInSession}
+                onCheckedChange={onSetUseMaterial}
+              />
+              <div>
+                <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#8a8e87]">
+                  Correctiestijl
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["gentle", "direct"] as const).map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => onSetCorrectionStyle(style)}
+                      aria-pressed={preferences.correctionStyle === style}
+                      className={cn(
+                        "rounded-[8px] border px-3 py-2 text-[13px] font-medium transition",
+                        preferences.correctionStyle === style
+                          ? "border-[#2f6f57] bg-[#eef5f0] text-[#2f6f57]"
+                          : "border-[#e0ddd2] bg-white text-[#1f2420] hover:border-[#2f6f57]",
+                      )}
+                    >
+                      {style === "gentle" ? "Rustig" : "Direct"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {panel.type === "reset" && (
+            <div className="space-y-4">
+              <p className="text-[14px] leading-[22px] text-[#5a615b]">
+                Er is geen account in deze lokale MVP. Deze actie reset alleen je lokale niveau,
+                scenario, score, doelen en sessiestatus.
+              </p>
+              <div className="flex justify-end gap-2">
+                <PanelButton onClick={onClose}>Annuleren</PanelButton>
+                <PanelButton tone="danger" onClick={onReset}>
+                  Reset lokaal
+                </PanelButton>
+              </div>
+            </div>
+          )}
+
+          {panel.type === "setup" && (
+            <div className="space-y-5">
+              <div>
+                <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#8a8e87]">
+                  Niveau
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  {levels.map((level) => (
+                    <button
+                      key={level.id}
+                      type="button"
+                      onClick={() => onSelectLevel(level.id)}
+                      className={cn(
+                        "rounded-[8px] border px-3 py-2 text-[13px] font-semibold transition",
+                        preferences.selectedLevel === level.id
+                          ? "border-[#2f6f57] bg-[#2f6f57] text-white"
+                          : "border-[#e0ddd2] bg-white text-[#1f2420] hover:border-[#2f6f57]",
+                      )}
+                    >
+                      {level.id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#8a8e87]">
+                  Scenario
+                </p>
+                <div className="space-y-2">
+                  {scenarios.map((scenario) => (
+                    <button
+                      key={scenario.id}
+                      type="button"
+                      onClick={() => onSelectScenario(scenario)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-[8px] border px-3 py-2 text-left transition",
+                        preferences.selectedScenarioId === scenario.id
+                          ? "border-[#2f6f57] bg-[#eef5f0]"
+                          : "border-[#e0ddd2] bg-white hover:border-[#2f6f57]",
+                      )}
+                    >
+                      <span>
+                        <span className="block text-[13px] font-semibold">{scenario.title}</span>
+                        <span className="text-[12px] text-[#8a8e87]">{scenario.topicCategory}</span>
+                      </span>
+                      {preferences.selectedScenarioId === scenario.id && (
+                        <CheckCircle2 className="size-4 text-[#2f6f57]" strokeWidth={1.8} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <PanelStat
+                label="Actief materiaal"
+                value={activeMaterial?.title ?? "Geen materiaal"}
+                note={`${materials.length} lokaal opgeslagen bestand${materials.length === 1 ? "" : "en"}`}
+              />
+            </div>
+          )}
+
+          {panel.type === "metric" && (
+            <div className="space-y-4">
+              <PanelStat
+                label={panel.metric.label}
+                value={`${panel.metric.score} / 100`}
+                note={panel.metric.note}
+              />
+              <div className="rounded-[8px] border border-[#e0ddd2] bg-white p-4">
+                <p className="text-[13px] leading-[21px] text-[#5a615b]">
+                  {metricDetailCopy(panel.metric)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {panel.type === "grammar" && (
+            <div className="space-y-4">
+              <PanelStat label="Focus" value={panel.point} note={selectedScenario.topic} />
+              <div className="rounded-[8px] border border-[#e0ddd2] bg-white p-4">
+                <p className="text-[13px] leading-[21px] text-[#5a615b]">
+                  De volgende live sessie stuurt de tutor om dit punt actief te oefenen, met een
+                  korte correctie zodra je het gebruikt.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {selectedScenario.vocabularyGoals.map((goal) => (
+                  <button
+                    key={goal}
+                    type="button"
+                    onClick={() => onToggleVocabulary(goal)}
+                    className={cn(
+                      "rounded-[5px] border px-2.5 py-1.5 text-[11px] font-medium transition",
+                      preferences.selectedVocabularyGoals.includes(goal)
+                        ? "border-[#cbd9cf] bg-[#eef5f0] text-[#2f6f57]"
+                        : "border-[#e6e2d6] bg-white text-[#5a615b] hover:border-[#2f6f57]",
+                    )}
+                  >
+                    {goal}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function PanelStat({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="rounded-[8px] border border-[#e0ddd2] bg-white p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">{label}</p>
+      <p className="mt-2 text-[18px] font-semibold leading-tight text-[#1f2420]">{value}</p>
+      <p className="mt-1 text-[13px] leading-[20px] text-[#5a615b]">{note}</p>
+    </div>
+  )
+}
+
+function PanelSwitch({
+  label,
+  checked,
+  onCheckedChange,
+}: {
+  label: string
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-[8px] border border-[#e0ddd2] bg-white p-4">
+      <p className="text-[13px] font-medium text-[#1f2420]">{label}</p>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} className="data-[state=checked]:bg-[#2f6f57]" />
+    </div>
+  )
+}
+
+function PanelButton({
+  children,
+  onClick,
+  tone = "neutral",
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  tone?: "neutral" | "danger"
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-[8px] border px-3 py-2 text-[13px] font-medium transition",
+        tone === "danger"
+          ? "border-[#c98b3a] bg-[#fff8ed] text-[#765327] hover:bg-[#f9eddc]"
+          : "border-[#e0ddd2] bg-white text-[#1f2420] hover:border-[#2f6f57] hover:text-[#2f6f57]",
+      )}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -1079,51 +1739,22 @@ function RailSection({
 
 function RailRow({
   icon: Icon,
+  onClick,
   children,
 }: {
   icon: typeof Settings
+  onClick: () => void
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-5 py-4 text-left text-[13px] text-[#5a615b] transition hover:bg-white/65 sm:px-7"
     >
       <Icon className="size-4" strokeWidth={1.6} aria-hidden="true" />
       {children}
     </button>
-  )
-}
-
-function TranscriptRow({
-  label,
-  status = "final",
-  children,
-}: {
-  label: string
-  status?: "partial" | "final" | "error" | "tool"
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      className={cn(
-        "grid grid-cols-[88px_minmax(0,1fr)] items-center gap-4 px-5 py-3.5",
-        status === "tool" && "bg-[#f7faf6]",
-        status === "error" && "bg-[#fff8ed]",
-      )}
-    >
-      <span className="text-[13px] text-[#8a8e87]">{label}</span>
-      <p
-        className={cn(
-          "text-[14px] leading-[22px] text-[#1f2420]",
-          status === "partial" && "text-[#5a615b] italic",
-          status === "tool" && "text-[13px] text-[#2f6f57]",
-          status === "error" && "text-[#765327]",
-        )}
-      >
-        {children}
-      </p>
-    </div>
   )
 }
 

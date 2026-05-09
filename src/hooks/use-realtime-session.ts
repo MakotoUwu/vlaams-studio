@@ -4,9 +4,12 @@ import { useCallback, useRef, useState } from "react"
 
 import {
   applyRealtimeServerEvent,
+  createCorrectionTurn,
   createMaterialLookupTurn,
+  parseCorrectionArguments,
   parseMaterialSearchArguments,
   parseRealtimeServerMessage,
+  type RealtimePhase,
   type RealtimeFunctionCall,
   type TranscriptTurn,
 } from "@/lib/realtime/events"
@@ -25,15 +28,28 @@ export function useRealtimeSession() {
   const localStreamRef = useRef<MediaStream | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const transcriptRef = useRef<TranscriptTurn[]>([])
+  const transcriptFrameRef = useRef<number | null>(null)
   const closedByClientRef = useRef(false)
   const [status, setStatus] = useState<RealtimeStatus>("idle")
+  const [phase, setPhase] = useState<RealtimePhase>("idle")
   const [isMuted, setIsMuted] = useState(false)
   const [transcript, setTranscript] = useState<TranscriptTurn[]>([])
   const [lastError, setLastError] = useState<string | null>(null)
 
   const setTranscriptState = useCallback((next: TranscriptTurn[]) => {
     transcriptRef.current = next
-    setTranscript(next)
+
+    if (typeof window === "undefined") {
+      setTranscript(next)
+      return
+    }
+
+    if (transcriptFrameRef.current !== null) return
+
+    transcriptFrameRef.current = window.requestAnimationFrame(() => {
+      transcriptFrameRef.current = null
+      setTranscript(transcriptRef.current)
+    })
   }, [])
 
   const cleanupConnection = useCallback(() => {
@@ -43,6 +59,11 @@ export function useRealtimeSession() {
     peerRef.current?.close()
     localStreamRef.current?.getTracks().forEach((track) => track.stop())
     if (audioRef.current) audioRef.current.srcObject = null
+    if (transcriptFrameRef.current !== null) {
+      window.cancelAnimationFrame(transcriptFrameRef.current)
+      transcriptFrameRef.current = null
+      setTranscript(transcriptRef.current)
+    }
 
     dataChannelRef.current = null
     peerRef.current = null
@@ -54,6 +75,7 @@ export function useRealtimeSession() {
   const disconnect = useCallback(() => {
     cleanupConnection()
     setStatus("idle")
+    setPhase("idle")
   }, [cleanupConnection])
 
   const sendEvent = useCallback((event: unknown) => {
@@ -64,8 +86,32 @@ export function useRealtimeSession() {
 
   const handleFunctionCall = useCallback(
     async (functionCall: RealtimeFunctionCall) => {
+      if (functionCall.name === "record_correction") {
+        const correction = parseCorrectionArguments(functionCall.arguments)
+        const output = correction
+          ? { saved: true }
+          : { saved: false, error: "Malformed correction arguments." }
+
+        if (correction) {
+          setTranscriptState([...transcriptRef.current, createCorrectionTurn(correction)])
+        }
+
+        sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: functionCall.call_id,
+            output: JSON.stringify(output),
+          },
+        })
+        sendEvent({ type: "response.create" })
+        setPhase("tutor-speaking")
+        return
+      }
+
       if (functionCall.name !== "search_lesson_materials") return
 
+      setPhase("searching-materials")
       const args = parseMaterialSearchArguments(functionCall.arguments)
       let output: { chunks?: unknown[]; error?: string } = {
         chunks: [],
@@ -105,6 +151,7 @@ export function useRealtimeSession() {
         },
       })
       sendEvent({ type: "response.create" })
+      setPhase("tutor-speaking")
     },
     [sendEvent, setTranscriptState],
   )
@@ -118,9 +165,14 @@ export function useRealtimeSession() {
         setTranscriptState(result.turns)
       }
 
+      if (result.phase) {
+        setPhase(result.phase)
+      }
+
       if (result.errorMessage) {
         setLastError(result.errorMessage)
         setStatus("error")
+        setPhase("error")
       }
 
       for (const functionCall of result.functionCalls) {
@@ -136,6 +188,7 @@ export function useRealtimeSession() {
 
       closedByClientRef.current = false
       setStatus("connecting")
+      setPhase("connecting")
       setLastError(null)
       setTranscriptState([])
 
@@ -148,6 +201,7 @@ export function useRealtimeSession() {
 
         if (tokenResponse.status === 401) {
           setStatus("missing-key")
+          setPhase("missing-key")
           return
         }
 
@@ -155,6 +209,7 @@ export function useRealtimeSession() {
           const payload = (await tokenResponse.json().catch(() => null)) as { error?: string } | null
           setLastError(payload?.error ?? "Could not start Realtime session.")
           setStatus("error")
+          setPhase("error")
           return
         }
 
@@ -168,6 +223,7 @@ export function useRealtimeSession() {
           if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
             cleanupConnection()
             setStatus("error")
+            setPhase("reconnecting")
             setLastError("Realtime connection was interrupted. Try reconnecting.")
           }
         })
@@ -194,11 +250,13 @@ export function useRealtimeSession() {
         dataChannel.addEventListener("message", handleRealtimeEvent)
         dataChannel.addEventListener("open", () => {
           setStatus("live")
+          setPhase("listening")
           dataChannel.send(JSON.stringify({ type: "response.create" }))
         })
         dataChannel.addEventListener("close", () => {
           if (!closedByClientRef.current) {
             setStatus("error")
+            setPhase("error")
             setLastError("Realtime connection closed unexpectedly.")
           }
         })
@@ -218,6 +276,7 @@ export function useRealtimeSession() {
         if (!sdpResponse.ok) {
           cleanupConnection()
           setStatus("error")
+          setPhase("error")
           setLastError("OpenAI rejected the WebRTC offer.")
           return
         }
@@ -230,10 +289,12 @@ export function useRealtimeSession() {
         cleanupConnection()
         if (error instanceof DOMException && error.name === "NotAllowedError") {
           setStatus("mic-error")
+          setPhase("mic-error")
           return
         }
 
         setStatus("error")
+        setPhase("error")
         setLastError(error instanceof Error ? error.message : "Could not start Realtime session.")
       }
     },
@@ -250,6 +311,7 @@ export function useRealtimeSession() {
 
   return {
     status,
+    phase,
     isMuted,
     transcript,
     lastError,

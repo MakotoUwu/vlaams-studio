@@ -2,10 +2,8 @@
 
 import * as React from "react"
 import * as SwitchPrimitives from "@radix-ui/react-switch"
-import { motion } from "motion/react"
 
 import { cn } from "@/lib/utils"
-import { springInteraction } from "@/lib/motion"
 
 function Switch({
   className,
@@ -19,13 +17,7 @@ function Switch({
       )}
       {...props}
     >
-      <SwitchPrimitives.Thumb asChild>
-        <motion.span
-          layout
-          transition={springInteraction}
-          className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0"
-        />
-      </SwitchPrimitives.Thumb>
+      <SwitchPrimitives.Thumb className="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform duration-[160ms] data-[state=checked]:translate-x-5 data-[state=unchecked]:translate-x-0" />
     </SwitchPrimitives.Root>
   )
 }

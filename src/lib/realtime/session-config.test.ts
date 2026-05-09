@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { buildRealtimeInstructions, buildRealtimeSessionConfig } from "@/lib/realtime/session-config"
 
 describe("Realtime session config", () => {
-  it("uses GPT Realtime 2 with low reasoning and the material search tool", () => {
+  it("uses GPT Realtime 2 with low reasoning, transcription, and tools", () => {
     const config = buildRealtimeSessionConfig({
       level: "A2",
       scenarioId: "tram-stop",
@@ -18,7 +18,10 @@ describe("Realtime session config", () => {
       model: "gpt-realtime-whisper",
       language: "nl",
     })
-    expect(config.tools[0]?.name).toBe("search_lesson_materials")
+    expect(config.tools.map((tool) => tool.name)).toEqual([
+      "search_lesson_materials",
+      "record_correction",
+    ])
   })
 
   it("includes the selected level, scenario, and active materials in instructions", () => {
@@ -32,5 +35,21 @@ describe("Realtime session config", () => {
     expect(instructions).toContain("CEFR level B1")
     expect(instructions).toContain("At the doctor appointment")
     expect(instructions).toContain("lesson-a, lesson-b")
+  })
+
+  it("includes focused vocabulary, grammar, and correction style", () => {
+    const instructions = buildRealtimeInstructions({
+      level: "A2",
+      scenarioId: "bakery-antwerp",
+      materialIds: [],
+      mode: "roleplay",
+      focusedVocabulary: ["broodsoorten", "prijzen"],
+      focusedGrammar: "Vraagzinnen met 'zou graag'",
+      correctionStyle: "direct",
+    })
+
+    expect(instructions).toContain("Correction style: direct")
+    expect(instructions).toContain("broodsoorten, prijzen")
+    expect(instructions).toContain("Vraagzinnen met 'zou graag'")
   })
 })
