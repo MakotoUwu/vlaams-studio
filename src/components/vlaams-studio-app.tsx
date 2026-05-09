@@ -466,7 +466,7 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
-            <div className="-mx-7 mt-auto border-t border-[#e0ddd2]">
+            <div className="-mx-7 border-t border-[#e0ddd2]">
               <button
                 type="button"
                 className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-7 py-4 text-left transition hover:bg-white/65"

@@ -69,7 +69,7 @@ Font sizes:
 4. **VOORTGANG <level> eyebrow**:
    - `64%` big sans 600 (28 px), caption `van niveau voltooid` underneath.
    - Slim 4 px progress bar in `--green` on `--line`.
-5. **Profile** at the bottom: full-rail row with a round avatar, name + `Bekijk profiel` link. Below it `Instellingen` and `Uitloggen` rows with lucide icons (`Settings`, `LogOut`), 13 px text, full-width hairline dividers, full-row hover.
+5. **Profile** follows progress as a connected rail section, not a detached bottom dock: full-rail row with a round avatar, name + `Bekijk profiel` link. Below it `Instellingen` and `Uitloggen` rows with lucide icons (`Settings`, `LogOut`), 13 px text, full-width hairline dividers, full-row hover.
 
 The whole rail is sticky on tall screens; nothing scrolls horizontally.
 
