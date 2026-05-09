@@ -131,6 +131,10 @@
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  :where(button, [role="button"], a, input, select, textarea):focus-visible {
+    outline: 2px solid color-mix(in oklab, #2f6f57 48%, transparent);
+    outline-offset: 3px;
+  }
   html {
     @apply font-sans;
   }
@@ -148,4 +152,39 @@
   background-image: radial-gradient(rgba(31, 36, 32, 0.06) 1px, transparent 1px);
   background-size: 22px 22px;
   background-position: 0 0;
+}
+
+[data-control-tooltip] {
+  position: relative;
+}
+
+@media (hover: hover) {
+  [data-control-tooltip]::after {
+    content: attr(data-control-tooltip);
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    z-index: 1;
+    width: max-content;
+    max-width: 180px;
+    transform: translateX(-50%) translateY(2px);
+    border: 1px solid #e0ddd2;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #1f2420;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0;
+    padding: 7px 9px;
+    pointer-events: none;
+    transition: opacity 140ms ease, transform 140ms ease;
+    white-space: nowrap;
+  }
+
+  [data-control-tooltip]:hover::after,
+  [data-control-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }

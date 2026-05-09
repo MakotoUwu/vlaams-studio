@@ -91,6 +91,7 @@ Top status row, then the scenario block, then the practice arena, then the score
 - Each tile: 132 px tall, 16 px radius, hairline border. Top-left small `ACTIEF` pill on the active tile. Centered icon (lucide) + bottom-aligned title (sans 600 15 px) + duration caption (`8–10 min`, 13 px `--ink-muted`).
 - Active tile: solid `--green`, white type, `ACTIEF` pill is white-on-green darker.
 - Hover: border → `--green`, slight lift.
+- Icon-only controls expose a short hover/focus tooltip and all buttons use a visible `focus-visible` ring. Labels must describe the implemented action, not a future gesture.
 
 ### Practice arena
 - Centered `Ik luister...` (15 px `--ink-soft`) above an animated 60-bar waveform in `--green`. Waveform animates only while `status === "live"`.

@@ -369,14 +369,14 @@ export function VlaamsStudioApp() {
     <main className="min-h-[100dvh] bg-[#f4f1ea] text-[#1f2420]">
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1536px] grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)_390px]">
         {/* LEFT RAIL */}
-        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-7 py-7 lg:border-b-0 lg:border-r">
+        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-5 py-6 sm:px-7 sm:py-7 lg:border-b-0 lg:border-r">
           <div className="flex h-full flex-col gap-7">
             <p className="text-[18px] font-semibold leading-none tracking-tight text-[#1f2420]">
               Vlaams Studio
             </p>
 
             <Section eyebrow="Niveau">
-              <div className="space-y-1.5">
+              <div className="max-w-[340px] space-y-1.5 sm:max-w-none">
                 {levels.map((level) => {
                   const isSelected = selectedLevel === level.id
                   return (
@@ -466,10 +466,10 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
-            <div className="-mx-7 border-t border-[#e0ddd2]">
+            <div className="-mx-5 border-t border-[#e0ddd2] sm:-mx-7">
               <button
                 type="button"
-                className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-7 py-4 text-left transition hover:bg-white/65"
+                className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-5 py-4 text-left transition hover:bg-white/65 sm:px-7"
               >
                 <span className="grid size-10 place-items-center rounded-full bg-[#607568] text-[12px] font-semibold text-white">
                   JL
@@ -589,6 +589,8 @@ export function VlaamsStudioApp() {
                   type="button"
                   onClick={realtime.toggleMute}
                   aria-label={realtime.isMuted ? "Microfoon weer aan" : "Microfoon dempen"}
+                  title={realtime.isMuted ? "Microfoon weer aan" : "Microfoon dempen"}
+                  data-control-tooltip={realtime.isMuted ? "Microfoon weer aan" : "Microfoon dempen"}
                   disabled={!isLive}
                   className="grid size-12 place-items-center rounded-full border border-[#e0ddd2] bg-white text-[#1f2420] transition disabled:opacity-50 hover:border-[#2f6f57]"
                 >
@@ -603,6 +605,8 @@ export function VlaamsStudioApp() {
                   onClick={() => void handlePracticeToggle()}
                   disabled={isConnecting}
                   aria-label={isLive ? "Sessie beëindigen" : "Live sessie starten"}
+                  title={isLive ? "Sessie beëindigen" : "Live sessie starten"}
+                  data-control-tooltip={isLive ? "Sessie beëindigen" : "Live sessie starten"}
                   className={cn(
                     "relative grid size-[72px] place-items-center rounded-full text-white ring-[6px] ring-white shadow-[0_18px_40px_-10px_rgba(36,87,70,0.45)] transition active:scale-[0.97] disabled:opacity-70",
                     isLive ? "bg-[#245746] hover:bg-[#1d4738]" : "bg-[#2f6f57] hover:bg-[#26604a]",
@@ -617,7 +621,7 @@ export function VlaamsStudioApp() {
                   <Mic className="size-6" strokeWidth={2} />
                 </button>
                 <span className="mt-3 whitespace-nowrap text-[12px] text-[#8a8e87]">
-                  Houd ingedrukt om te praten
+                  {isLive ? "Gesprek actief" : "Klik om te praten"}
                 </span>
               </div>
 
@@ -626,6 +630,8 @@ export function VlaamsStudioApp() {
                   type="button"
                   onClick={() => isLive && realtime.disconnect()}
                   aria-label="Gesprek beëindigen"
+                  title="Gesprek beëindigen"
+                  data-control-tooltip="Gesprek beëindigen"
                   disabled={!isLive}
                   className="grid size-12 place-items-center rounded-full border border-[#e0ddd2] bg-white text-[#1f2420] transition disabled:opacity-50 hover:border-[#2f6f57]"
                 >
@@ -691,6 +697,8 @@ export function VlaamsStudioApp() {
                         type="button"
                         onClick={() => setShowCorrectionNote((value) => !value)}
                         aria-label={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
+                        title={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
+                        data-control-tooltip={showCorrectionNote ? "Verberg toelichting" : "Toon toelichting"}
                         className="grid size-7 place-items-center rounded-full border border-[#e0ddd2] text-[#5a615b] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
                       >
                         <ChevronDown
@@ -950,7 +958,7 @@ function RailRow({
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-7 py-4 text-left text-[13px] text-[#5a615b] transition hover:bg-white/65"
+      className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-5 py-4 text-left text-[13px] text-[#5a615b] transition hover:bg-white/65 sm:px-7"
     >
       <Icon className="size-4" strokeWidth={1.6} aria-hidden="true" />
       {children}
