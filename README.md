@@ -2,6 +2,8 @@
 
 Local web app for practicing Flemish with GPT Realtime 2, CEFR levels, roleplay scenarios, and uploaded lesson material context.
 
+![Vlaams Studio practice interface](docs/assets/vlaams-studio-screenshot.png)
+
 ## Setup
 
 ```bash
