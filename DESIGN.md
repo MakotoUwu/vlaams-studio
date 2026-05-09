@@ -9,12 +9,12 @@ Three-column app shell on desktop, full-bleed on the page background. The shell 
 ```
 ┌─────────────┬──────────────────────────────┬─────────────┐
 │  Left rail  │      Studio (main)           │ Right rail  │
-│  ~232 px    │      flexible (1fr)          │  ~328 px    │
+│  ~244 px    │      flexible (1fr)          │  ~390 px    │
 └─────────────┴──────────────────────────────┴─────────────┘
 ```
 
 - Left and right rails get a faint vertical divider against the studio column.
-- Max content width ~ 1480 px. Center the shell on wider screens.
+- Max content width ~ 1536 px. Center the shell on wider screens.
 - Vertical rhythm: 24 px section gap, 16 px tile gap, 12 px chip gap.
 
 ## Color tokens
@@ -69,7 +69,7 @@ Font sizes:
 4. **VOORTGANG <level> eyebrow**:
    - `64%` big sans 600 (28 px), caption `van niveau voltooid` underneath.
    - Slim 4 px progress bar in `--green` on `--line`.
-5. **Profile** at the bottom: round avatar tile with initials, name + `Bekijk profiel` link. Below it `Instellingen` and `Uitloggen` rows with lucide icons (`Settings`, `LogOut`), 13 px text, full-row hover.
+5. **Profile** at the bottom: full-rail row with a round avatar, name + `Bekijk profiel` link. Below it `Instellingen` and `Uitloggen` rows with lucide icons (`Settings`, `LogOut`), 13 px text, full-width hairline dividers, full-row hover.
 
 The whole rail is sticky on tall screens; nothing scrolls horizontally.
 
@@ -114,7 +114,7 @@ Top status row, then the scenario block, then the practice arena, then the score
 ## Right rail
 
 1. **LESMATERIAAL** eyebrow.
-2. File card: PDF icon, filename (sans 500 14 px), meta line `PDF · 420 KB` (12 px muted). Solid green disc with white check on the right when this material is the one in use.
+2. File card: PDF icon, filename (sans 500 14 px), meta line `PDF · 420 KB` (12 px muted). Content sits in a ~292 px column inside the wider rail, leaving expensive whitespace on the right. Solid green disc with white check on the right when this material is the one in use.
 3. `Materiaal vervangen` ghost button (with rotate-CCW icon, full width).
 4. Row toggle: `Gebruik dit materiaal in sessie` + `--green` switch.
 5. **ACTIEF LESONDERWERP** eyebrow → `Eten en drinken / Bakkerswinkel` (sans 600 15 px) + `A2 — Dagelijks leven` (13 px muted) + `Aanpassen` ghost button.

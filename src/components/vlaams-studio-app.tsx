@@ -367,9 +367,9 @@ export function VlaamsStudioApp() {
 
   return (
     <main className="min-h-[100dvh] bg-[#f4f1ea] text-[#1f2420]">
-      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1480px] grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)_328px]">
+      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1536px] grid-cols-1 lg:grid-cols-[244px_minmax(0,1fr)_390px]">
         {/* LEFT RAIL */}
-        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-5 py-5 lg:border-b-0 lg:border-r">
+        <aside className="border-b border-[#e0ddd2] bg-[#f4f1ea] px-7 py-7 lg:border-b-0 lg:border-r">
           <div className="flex h-full flex-col gap-7">
             <p className="text-[18px] font-semibold leading-none tracking-tight text-[#1f2420]">
               Vlaams Studio
@@ -417,6 +417,8 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
+            <RailRule />
+
             <Section eyebrow="Vandaag">
               <div className="flex items-start justify-between">
                 <div>
@@ -449,6 +451,8 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
+            <RailRule />
+
             <Section eyebrow={`Voortgang ${selectedLevel}`}>
               <p className="tabular text-[36px] font-semibold leading-[40px] tracking-tight">
                 {progress[selectedLevel]}%
@@ -462,10 +466,10 @@ export function VlaamsStudioApp() {
               </div>
             </Section>
 
-            <div className="mt-auto space-y-2 pt-2">
+            <div className="-mx-7 mt-auto border-t border-[#e0ddd2]">
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-[8px] border border-[#e0ddd2] bg-white p-2.5 text-left transition hover:border-[#c4c0b3]"
+                className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-7 py-4 text-left transition hover:bg-white/65"
               >
                 <span className="grid size-10 place-items-center rounded-full bg-[#607568] text-[12px] font-semibold text-white">
                   JL
@@ -483,7 +487,7 @@ export function VlaamsStudioApp() {
         </aside>
 
         {/* CENTER */}
-        <section className="min-w-0 px-6 py-5 sm:px-8 lg:py-6">
+        <section className="min-w-0 px-6 py-5 sm:px-8 lg:px-16 lg:py-10">
           <header className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full bg-transparent text-[11px] font-semibold uppercase tracking-[0.16em] text-[#5a615b]">
               <span className={cn("inline-block size-2 rounded-full", statusDot)} aria-hidden="true" />
@@ -762,12 +766,12 @@ export function VlaamsStudioApp() {
             content sits directly on the ivory background. The only surfaces with
             their own card are the file upload (functional grouping) and the
             teacher note (visual emphasis). */}
-        <aside className="border-t border-[#e0ddd2] bg-[#f4f1ea] px-5 lg:border-l lg:border-t-0">
+        <aside className="border-t border-[#e0ddd2] bg-[#f4f1ea] lg:border-l lg:border-t-0">
           <RailSection eyebrow="Lesmateriaal" first>
-            <div className="rounded-[8px] border border-dashed border-[#d6d1c3] bg-white p-3">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-12 items-center justify-center border-r border-[#e0ddd2] text-[#5a615b]">
-                  <FileText className="size-5" strokeWidth={1.4} aria-hidden="true" />
+            <div className="rounded-[8px] border border-dashed border-[#d6d1c3] bg-white px-4 py-4">
+              <div className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-4">
+                <span className="flex h-12 items-center justify-center border-r border-[#e0ddd2] text-[#1f2420]">
+                  <FileText className="size-8" strokeWidth={1.35} aria-hidden="true" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-semibold leading-none">
@@ -788,7 +792,7 @@ export function VlaamsStudioApp() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-[8px] border border-[#e0ddd2] bg-white px-3 py-2.5 text-[13px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
+              className="mt-5 flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border border-[#e0ddd2] bg-white px-3 text-[13px] font-medium text-[#1f2420] transition hover:border-[#2f6f57] hover:text-[#2f6f57]"
             >
               <RotateCcw className="size-4" strokeWidth={1.6} aria-hidden="true" />
               Materiaal vervangen
@@ -804,7 +808,7 @@ export function VlaamsStudioApp() {
               <p className="mt-2 text-[11px] text-[#8a8e87]">{uploadMessage}</p>
             )}
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-6 flex items-center justify-between">
               <p className="text-[13px] font-medium text-[#5a615b]">
                 Gebruik dit materiaal in sessie
               </p>
@@ -833,9 +837,9 @@ export function VlaamsStudioApp() {
                 <span
                   key={word}
                   className={cn(
-                    "inline-flex items-center rounded-[6px] border px-2.5 py-1 text-[12px] font-medium leading-none text-[#5a615b]",
+                    "inline-flex items-center rounded-[5px] border px-2.5 py-1.5 text-[11px] font-medium leading-none text-[#5a615b]",
                     index === 0
-                      ? "border-[#cbd9cf] bg-[#e8efe9] text-[#2f6f57]"
+                      ? "border-[#cbd9cf] bg-[#eef5f0] text-[#2f6f57]"
                       : "border-[#e6e2d6] bg-white",
                   )}
                 >
@@ -851,7 +855,7 @@ export function VlaamsStudioApp() {
                 <li key={point}>
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-2 text-left text-[14px] leading-[20px] text-[#1f2420] transition hover:text-[#2f6f57]"
+                    className="flex w-full items-center justify-between gap-3 rounded-[6px] px-1 py-2 text-left text-[13px] leading-[20px] text-[#1f2420] transition hover:text-[#2f6f57]"
                   >
                     <span>{point}</span>
                     <ChevronRight
@@ -899,6 +903,10 @@ function Section({
   )
 }
 
+function RailRule() {
+  return <div className="h-px bg-[#e0ddd2]" aria-hidden="true" />
+}
+
 // Right-rail section: flat content separated from neighbours by a full-width
 // hairline rule. The first/last props control the rule above/below so the rail
 // reads as a single divided column instead of stacked cards.
@@ -916,15 +924,18 @@ function RailSection({
   return (
     <section
       className={cn(
-        "py-5",
+        "px-8",
+        first ? "pb-8 pt-10" : "py-8",
         !first && "border-t border-[#e0ddd2]",
         last && "border-b border-[#e0ddd2]",
       )}
     >
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">
-        {eyebrow}
-      </p>
-      {children}
+      <div className="max-w-[292px]">
+        <p className="mb-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a8e87]">
+          {eyebrow}
+        </p>
+        {children}
+      </div>
     </section>
   )
 }
@@ -939,7 +950,7 @@ function RailRow({
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] text-[#5a615b] transition hover:bg-white"
+      className="flex w-full items-center gap-3 border-b border-[#e0ddd2] px-7 py-4 text-left text-[13px] text-[#5a615b] transition hover:bg-white/65"
     >
       <Icon className="size-4" strokeWidth={1.6} aria-hidden="true" />
       {children}
