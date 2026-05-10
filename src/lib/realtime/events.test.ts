@@ -4,9 +4,11 @@ import {
   applyRealtimeServerEvent,
   createCorrectionTurn,
   createMaterialLookupTurn,
+  createSessionEndedTurn,
   parseMaterialSearchArguments,
   parseCorrectionArguments,
   parseRealtimeServerMessage,
+  parseSessionEndArguments,
 } from "@/lib/realtime/events"
 
 describe("Realtime event reducer", () => {
@@ -89,6 +91,29 @@ describe("Realtime event reducer", () => {
     expect(result.phase).toBe("searching-materials")
   })
 
+  it("extracts session end function calls and maps the phase to ending", () => {
+    const result = applyRealtimeServerEvent([], {
+      type: "response.done",
+      response: {
+        output: [
+          {
+            type: "function_call",
+            name: "end_practice_session",
+            call_id: "call-end",
+            arguments: "{\"reason\":\"scenario complete\",\"summary\":\"You ordered bread clearly.\"}",
+          },
+        ],
+      },
+    })
+
+    expect(result.functionCalls).toHaveLength(1)
+    expect(result.functionCalls[0]).toMatchObject({
+      name: "end_practice_session",
+      call_id: "call-end",
+    })
+    expect(result.phase).toBe("ending")
+  })
+
   it("guards malformed JSON in server events and tool arguments", () => {
     const event = parseRealtimeServerMessage("{not valid")
     const result = applyRealtimeServerEvent([], event)
@@ -98,6 +123,7 @@ describe("Realtime event reducer", () => {
     expect(result.phase).toBe("error")
     expect(parseMaterialSearchArguments("{not valid")).toEqual({ query: "" })
     expect(parseCorrectionArguments("{not valid")).toBeNull()
+    expect(parseSessionEndArguments("{not valid")).toBeNull()
   })
 
   it("filters material IDs from function-call arguments", () => {
@@ -159,6 +185,28 @@ describe("Realtime event reducer", () => {
         query: "prijzen",
         chunkCount: 2,
       },
+    })
+  })
+
+  it("parses session end arguments and creates a system turn", () => {
+    const payload = parseSessionEndArguments(
+      JSON.stringify({
+        reason: "scenario complete",
+        summary: "Je hebt brood besteld en naar de prijs gevraagd.",
+        nextStep: "Oefen volgende keer met hoeveelheden.",
+      }),
+    )
+
+    expect(payload).toEqual({
+      reason: "scenario complete",
+      summary: "Je hebt brood besteld en naar de prijs gevraagd.",
+      nextStep: "Oefen volgende keer met hoeveelheden.",
+    })
+
+    expect(createSessionEndedTurn(payload)).toMatchObject({
+      speaker: "System",
+      status: "tool",
+      text: "Sessie afgerond: Je hebt brood besteld en naar de prijs gevraagd. Volgende stap: Oefen volgende keer met hoeveelheden.",
     })
   })
 })

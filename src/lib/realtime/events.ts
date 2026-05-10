@@ -6,6 +6,7 @@ export type RealtimePhase =
   | "transcribing"
   | "tutor-speaking"
   | "searching-materials"
+  | "ending"
   | "reconnecting"
   | "missing-key"
   | "mic-error"
@@ -17,6 +18,12 @@ export type CorrectionPayload = {
   reason: string
   grammarPoint?: string
   retryPrompt?: string
+}
+
+export type SessionEndPayload = {
+  reason: string
+  summary: string
+  nextStep?: string
 }
 
 export type TranscriptTurn = {
@@ -137,6 +144,28 @@ export function parseCorrectionArguments(rawArguments: string): CorrectionPayloa
   }
 }
 
+export function parseSessionEndArguments(rawArguments: string): SessionEndPayload | null {
+  try {
+    const parsed = JSON.parse(rawArguments || "{}")
+    if (!isObject(parsed)) return null
+
+    const reason = typeof parsed.reason === "string" ? parsed.reason.trim() : ""
+    const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : ""
+    const nextStep =
+      typeof parsed.nextStep === "string" && parsed.nextStep.trim() ? parsed.nextStep.trim() : undefined
+
+    if (!reason || !summary) return null
+
+    return {
+      reason,
+      summary,
+      ...(nextStep ? { nextStep } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
 export function createMaterialLookupTurn(query: string, chunkCount: number): TranscriptTurn {
   const safeQuery = query.trim() || "de huidige oefening"
 
@@ -152,6 +181,18 @@ export function createMaterialLookupTurn(query: string, chunkCount: number): Tra
       chunkCount > 0
         ? `Lesmateriaal gebruikt: ${chunkCount} fragment${chunkCount === 1 ? "" : "en"} voor "${safeQuery}".`
         : `Geen passend lesmateriaal gevonden voor "${safeQuery}".`,
+  }
+}
+
+export function createSessionEndedTurn(payload: SessionEndPayload | null): TranscriptTurn {
+  const summary = payload?.summary?.trim() || "De oefensessie is afgerond."
+  const nextStep = payload?.nextStep?.trim()
+
+  return {
+    id: `session-ended-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    speaker: "System",
+    status: "tool",
+    text: nextStep ? `Sessie afgerond: ${summary} Volgende stap: ${nextStep}` : `Sessie afgerond: ${summary}`,
   }
 }
 
@@ -317,11 +358,13 @@ export function applyRealtimeServerEvent(
 
   if (event.type === "response.done") {
     const functionCalls = (event.response?.output ?? []).filter(isFunctionCall)
+    const hasSessionEndCall = functionCalls.some((call) => call.name === "end_practice_session")
+    const hasMaterialSearchCall = functionCalls.some((call) => call.name === "search_lesson_materials")
 
     return {
       turns: currentTurns,
       functionCalls,
-      phase: functionCalls.length ? "searching-materials" : "listening",
+      phase: hasSessionEndCall ? "ending" : hasMaterialSearchCall ? "searching-materials" : "listening",
     }
   }
 

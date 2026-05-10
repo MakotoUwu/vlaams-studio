@@ -655,6 +655,7 @@ export function VlaamsStudioApp() {
     transcribing: "Transcriptie loopt…",
     "tutor-speaking": "Docent antwoordt…",
     "searching-materials": "Lesmateriaal zoeken…",
+    ending: "Sessie afronden…",
     reconnecting: "Opnieuw verbinden…",
     "missing-key": "API-sleutel ontbreekt",
     "mic-error": "Microfoon geblokkeerd",

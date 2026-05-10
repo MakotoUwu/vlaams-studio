@@ -6,9 +6,11 @@ import {
   applyRealtimeServerEvent,
   createCorrectionTurn,
   createMaterialLookupTurn,
+  createSessionEndedTurn,
   parseCorrectionArguments,
   parseMaterialSearchArguments,
   parseRealtimeServerMessage,
+  parseSessionEndArguments,
   type RealtimePhase,
   type RealtimeFunctionCall,
   type TranscriptTurn,
@@ -30,6 +32,7 @@ export function useRealtimeSession() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const transcriptRef = useRef<TranscriptTurn[]>([])
   const transcriptFrameRef = useRef<number | null>(null)
+  const endSessionTimerRef = useRef<number | null>(null)
   const closedByClientRef = useRef(false)
   const [status, setStatus] = useState<RealtimeStatus>("idle")
   const [phase, setPhase] = useState<RealtimePhase>("idle")
@@ -56,6 +59,10 @@ export function useRealtimeSession() {
   const cleanupConnection = useCallback(() => {
     closedByClientRef.current = true
 
+    if (endSessionTimerRef.current !== null) {
+      window.clearTimeout(endSessionTimerRef.current)
+      endSessionTimerRef.current = null
+    }
     dataChannelRef.current?.close()
     peerRef.current?.close()
     localStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -87,6 +94,33 @@ export function useRealtimeSession() {
 
   const handleFunctionCall = useCallback(
     async (functionCall: RealtimeFunctionCall) => {
+      if (functionCall.name === "end_practice_session") {
+        const sessionEnd = parseSessionEndArguments(functionCall.arguments)
+        const output = sessionEnd
+          ? { ended: true }
+          : { ended: true, warning: "Malformed session end arguments." }
+
+        setTranscriptState([...transcriptRef.current, createSessionEndedTurn(sessionEnd)])
+
+        sendEvent({
+          type: "conversation.item.create",
+          item: {
+            type: "function_call_output",
+            call_id: functionCall.call_id,
+            output: JSON.stringify(output),
+          },
+        })
+
+        setPhase("ending")
+        endSessionTimerRef.current = window.setTimeout(() => {
+          endSessionTimerRef.current = null
+          cleanupConnection()
+          setStatus("idle")
+          setPhase("idle")
+        }, 1800)
+        return
+      }
+
       if (functionCall.name === "record_correction") {
         const correction = parseCorrectionArguments(functionCall.arguments)
         const output = correction
@@ -154,7 +188,7 @@ export function useRealtimeSession() {
       sendEvent({ type: "response.create" })
       setPhase("tutor-speaking")
     },
-    [sendEvent, setTranscriptState],
+    [cleanupConnection, sendEvent, setTranscriptState],
   )
 
   const handleRealtimeEvent = useCallback(

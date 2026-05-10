@@ -37,7 +37,7 @@ export type RealtimeSessionConfig = {
   }
   tools: Array<{
     type: "function"
-    name: "search_lesson_materials" | "record_correction"
+    name: "search_lesson_materials" | "record_correction" | "end_practice_session"
     description: string
     parameters: {
       type: "object"
@@ -73,6 +73,12 @@ Start in character with: "${scenario.starter}"
 Keep the learner speaking. Ask one question at a time.
 Do not lecture. Continue the scene after each correction.
 
+# Ending the Session
+End the practice only when it naturally makes sense: the learner completed the scenario goal, the scene reached a clear closing point, or the learner asks to stop.
+Do not end after a single answer or immediately after one correction unless the learner explicitly wants to stop.
+Before ending, say one brief spoken wrap-up with what went well and one next step.
+Then call end_practice_session so the app can stop the live microphone/session cleanly.
+
 # Corrections
 Correct lightly after the learner speaks.
 Give one natural correction and one better phrase, then return to the roleplay.
@@ -91,6 +97,7 @@ If no relevant material is available, say so briefly and continue from the curre
 Use only the provided tools.
 Call search_lesson_materials when you need vocabulary, grammar, teacher notes, or examples from uploaded lesson material.
 Call record_correction after giving a meaningful correction so the app can show it in the learner timeline.
+Call end_practice_session only after a natural final wrap-up.
 Do not pretend you read a file unless the tool returned relevant chunks.
 
 # Unclear Audio
@@ -179,6 +186,30 @@ export function buildRealtimeSessionConfig(input: RealtimeSessionInput): Realtim
             },
           },
           required: ["original", "corrected", "reason"],
+        },
+      },
+      {
+        type: "function",
+        name: "end_practice_session",
+        description:
+          "End the live Flemish practice session after the learner completes the scenario, reaches a natural closing point, or asks to stop.",
+        parameters: {
+          type: "object",
+          properties: {
+            reason: {
+              type: "string",
+              description: "Why the session should end now.",
+            },
+            summary: {
+              type: "string",
+              description: "One concise learner-facing summary of the practice result.",
+            },
+            nextStep: {
+              type: "string",
+              description: "Optional next step for the learner's next practice session.",
+            },
+          },
+          required: ["reason", "summary"],
         },
       },
     ],

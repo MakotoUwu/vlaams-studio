@@ -21,6 +21,7 @@ describe("Realtime session config", () => {
     expect(config.tools.map((tool) => tool.name)).toEqual([
       "search_lesson_materials",
       "record_correction",
+      "end_practice_session",
     ])
   })
 
@@ -35,6 +36,8 @@ describe("Realtime session config", () => {
     expect(instructions).toContain("CEFR level B1")
     expect(instructions).toContain("At the doctor appointment")
     expect(instructions).toContain("lesson-a, lesson-b")
+    expect(instructions).toContain("End the practice only when it naturally makes sense")
+    expect(instructions).toContain("call end_practice_session")
   })
 
   it("includes focused vocabulary, grammar, and correction style", () => {
