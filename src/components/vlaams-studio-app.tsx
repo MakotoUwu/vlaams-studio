@@ -944,9 +944,22 @@ export function VlaamsStudioApp() {
               </div>
             )}
             {realtime.status === "mic-error" && (
-              <div className="mt-5 flex w-full max-w-[640px] items-start gap-2 rounded-lg border border-[#d9b78d] bg-[#fff8ed] p-3 text-left text-[13px] text-[#765327]">
+              <div className="mt-5 flex w-full max-w-[640px] items-start gap-3 rounded-lg border border-[#d9b78d] bg-[#fff8ed] p-3 text-left text-[13px] text-[#765327]">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                Geef toestemming voor de microfoon om verder te oefenen.
+                <div className="min-w-0">
+                  <p>{realtime.lastError ?? "Geef toestemming voor de microfoon om verder te oefenen."}</p>
+                  <p className="mt-1 text-[12px] text-[#8b6b45]">
+                    In Chrome: klik op het site-icoon links van de URL, zet Microphone op Allow en
+                    probeer opnieuw.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handlePracticeToggle()}
+                    className="mt-3 rounded-[6px] border border-[#d6d1c3] bg-white px-3 py-1.5 text-[12px] font-medium text-[#1f2420] transition hover:border-[#2f6f57]"
+                  >
+                    Opnieuw proberen
+                  </button>
+                </div>
               </div>
             )}
             {realtime.lastError && realtime.status === "error" && (

@@ -13,6 +13,7 @@ import {
   type RealtimeFunctionCall,
   type TranscriptTurn,
 } from "@/lib/realtime/events"
+import { microphoneErrorMessage } from "@/lib/realtime/microphone"
 import type { RealtimeSessionInput } from "@/lib/realtime/session-config"
 
 export type RealtimeStatus = "idle" | "missing-key" | "connecting" | "live" | "mic-error" | "error"
@@ -192,6 +193,28 @@ export function useRealtimeSession() {
       setLastError(null)
       setTranscriptState([])
 
+      let localStream: MediaStream
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new DOMException("Microphone capture is unavailable.", "NotAllowedError")
+        }
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+        localStreamRef.current = localStream
+      } catch (error) {
+        cleanupConnection()
+        setStatus("mic-error")
+        setPhase("mic-error")
+        setLastError(microphoneErrorMessage(error))
+        return
+      }
+
       try {
         const tokenResponse = await fetch("/api/realtime/session", {
           method: "POST",
@@ -200,6 +223,7 @@ export function useRealtimeSession() {
         })
 
         if (tokenResponse.status === 401) {
+          cleanupConnection()
           setStatus("missing-key")
           setPhase("missing-key")
           return
@@ -207,6 +231,7 @@ export function useRealtimeSession() {
 
         if (!tokenResponse.ok) {
           const payload = (await tokenResponse.json().catch(() => null)) as { error?: string } | null
+          cleanupConnection()
           setLastError(payload?.error ?? "Could not start Realtime session.")
           setStatus("error")
           setPhase("error")
@@ -235,14 +260,6 @@ export function useRealtimeSession() {
           audioElement.srcObject = event.streams[0]
         }
 
-        const localStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
-        localStreamRef.current = localStream
         localStream.getTracks().forEach((track) => peer.addTrack(track, localStream))
 
         const dataChannel = peer.createDataChannel("oai-events")
@@ -287,12 +304,6 @@ export function useRealtimeSession() {
         })
       } catch (error) {
         cleanupConnection()
-        if (error instanceof DOMException && error.name === "NotAllowedError") {
-          setStatus("mic-error")
-          setPhase("mic-error")
-          return
-        }
-
         setStatus("error")
         setPhase("error")
         setLastError(error instanceof Error ? error.message : "Could not start Realtime session.")
